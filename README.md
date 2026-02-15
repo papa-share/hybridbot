@@ -142,6 +142,7 @@ Cette sélection automatique garantit que les images sont toujours traitées par
 Ce projet utilise des modèles **vision** (analyse d'images envoyées par l'utilisateur). Ollama propose par ailleurs des modèles dédiés à la **génération** d'images (texte vers image), non intégrés dans cette application :
 
 - **x/z-image-turbo** (Alibaba Tongyi Lab) : 6B paramètres, photoréaliste, bilingue EN/CN, licence Apache 2.0. Voir [Ollama – x/z-image-turbo](https://ollama.com/x/z-image-turbo).
+
 - **x/flux2-klein** (Black Forest Labs) : 4B et 9B paramètres, bon rendu texte/UI et typographie. Voir [Ollama – x/flux2-klein](https://ollama.com/x/flux2-klein).
 
 Disponibilité : actuellement **macOS uniquement** ; support Windows et Linux prévu (bientôt). Détails : [Ollama – Image generation (experimental)](https://ollama.com/blog/image-generation).
