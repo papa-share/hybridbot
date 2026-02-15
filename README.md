@@ -104,7 +104,7 @@ flowchart TB
 - Panneau paramètres : température, top_p, tokens max, choix du modèle (liste alimentée par `ollama list`, modèles cloud puis locaux)
 
 <p align="center">
-  <img src="public/paneau_parametre_OllamaHybrydBot.png" alt="Panneau de paramètres" width="700" />
+  <img src="public/paneau_parametre_OllamaHybrydBot.PNG" alt="Panneau de paramètres" width="700" />
 </p>
 
 <p align="center"><em>Panneau de paramètres : sélection du modèle, température, top_p, tokens max</em></p>
