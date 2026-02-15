@@ -3,6 +3,7 @@
 from chatbot.messages import (
     ERROR_400,
     ERROR_404,
+    ERROR_500,
     ERROR_CONNECTION,
     ERROR_GENERIC,
     ERROR_TIMEOUT,

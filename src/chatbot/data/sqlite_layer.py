@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import aiosqlite
-
 from chainlit.data import BaseDataLayer
 
 from chatbot.config import config
@@ -49,7 +48,7 @@ class SQLiteDataLayer(BaseDataLayer):
         async with aiosqlite.connect(self.db_path) as conn:
             # Activer le mode WAL pour meilleure concurrence
             await conn.execute("PRAGMA journal_mode=WAL")
-            
+
             cursor = await conn.cursor()
 
             # Table users
@@ -97,12 +96,12 @@ class SQLiteDataLayer(BaseDataLayer):
                 CREATE INDEX IF NOT EXISTS idx_steps_thread_id
                 ON steps(thread_id)
             """)
-            
+
             await cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_users_identifier
                 ON users(identifier)
             """)
-            
+
             await cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_threads_user_id_created
                 ON threads(user_id, created_at DESC)
@@ -239,7 +238,7 @@ class SQLiteDataLayer(BaseDataLayer):
             return {"data": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
 
         limit = pagination.get("first", config.DEFAULT_PAGINATION_LIMIT)
-        
+
         async with self._get_connection() as conn:
             cursor = await conn.execute(
                 "SELECT id, name, user_id, metadata, tags, created_at "
@@ -415,9 +414,7 @@ class SQLiteDataLayer(BaseDataLayer):
         """
         await self._ensure_initialized()
         async with self._get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT user_id FROM threads WHERE id = ?", (thread_id,)
-            )
+            cursor = await conn.execute("SELECT user_id FROM threads WHERE id = ?", (thread_id,))
             row = await cursor.fetchone()
             return row[0] if row else ""
 

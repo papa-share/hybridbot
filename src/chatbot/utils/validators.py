@@ -91,8 +91,6 @@ def validate_uploaded_files(files) -> tuple[list, list, list[str]]:
             continue
 
         is_image, _ = validate_file_type(file, [MIME_IMAGE_PREFIX])
-        is_document, _ = validate_file_type(file, [MIME_PDF, MIME_TEXT_PREFIX])
-
         if is_image:
             # Validation de la taille pour les images
             valid, error = validate_file_size(file_path, config.MAX_IMAGE_SIZE_MB)
@@ -101,21 +99,22 @@ def validate_uploaded_files(files) -> tuple[list, list, list[str]]:
                 logger.debug(f"Image validée: {file_name}")
             else:
                 errors.append(f"{file_name}: {error}")
-
-        elif is_document:
-            # Validation de la taille pour les documents
-            valid, error = validate_file_size(file_path, config.MAX_DOCUMENT_SIZE_MB)
-            if valid:
-                documents.append(file)
-                logger.debug(f"Document validé: {file_name}")
-            else:
-                errors.append(f"{file_name}: {error}")
         else:
-            # Type de fichier non supporté
-            mime = getattr(file, "mime", "inconnu")
-            error_msg = f"{file_name}: Type de fichier non supporté ({mime})"
-            errors.append(error_msg)
-            logger.warning(error_msg)
+            is_document, _ = validate_file_type(file, [MIME_PDF, MIME_TEXT_PREFIX])
+            if is_document:
+                # Validation de la taille pour les documents
+                valid, error = validate_file_size(file_path, config.MAX_DOCUMENT_SIZE_MB)
+                if valid:
+                    documents.append(file)
+                    logger.debug(f"Document validé: {file_name}")
+                else:
+                    errors.append(f"{file_name}: {error}")
+            else:
+                # Type de fichier non supporté
+                mime = getattr(file, "mime", "inconnu")
+                error_msg = f"{file_name}: Type de fichier non supporté ({mime})"
+                errors.append(error_msg)
+                logger.warning(error_msg)
 
     logger.info(
         f"Validation terminée: {len(images)} image(s), "

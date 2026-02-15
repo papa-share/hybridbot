@@ -378,7 +378,9 @@ async def main(message: cl.Message):
             mode = (
                 f"{len(images)} img"
                 if images
-                else f"{len(documents)} doc" if documents else "texte"
+                else f"{len(documents)} doc"
+                if documents
+                else "texte"
             )
             logger.debug(f"Traitement: {mode}")
 
@@ -425,7 +427,9 @@ async def main(message: cl.Message):
         if result.get("error"):
             error_content = (result.get("message") or {}).get("content") or ""
             await cl.Message(content=error_content).send()
-            await _create_step_safe(thread_id, "assistant_message", error_content, "Réponse assistant")
+            await _create_step_safe(
+                thread_id, "assistant_message", error_content, "Réponse assistant"
+            )
         else:
             await msg.send()
             output = (result.get("message") or {}).get("content") or msg.content

@@ -80,11 +80,11 @@ async def extract_document_content(file_path: str) -> str:
                     for page in pdf_reader.pages:
                         text_parts.append(page.extract_text())
                     return "\n".join(text_parts).strip()
-            
+
             return await asyncio.to_thread(_extract_pdf)
 
         elif file_lower.endswith(DOCUMENT_EXTENSIONS[1:]):
-            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
+            async with aiofiles.open(file_path, encoding="utf-8") as f:
                 return await f.read()
         else:
             return "Format de fichier non supporté"
@@ -130,13 +130,13 @@ async def list_model_names() -> list[str]:
         Liste de noms de modèles, cloud en premier
     """
     global _model_cache
-    
+
     # Vérifier le cache
     now = time.time()
     if now - _model_cache["timestamp"] < MODEL_CACHE_TTL and _model_cache["models"]:
         logger.debug(f"Utilisation du cache de modèles ({len(_model_cache['models'])} modèles)")
         return _model_cache["models"]
-    
+
     try:
         # Appel asynchrone pour ne pas bloquer l'event loop
         listed = await asyncio.to_thread(ollama.list)
@@ -167,11 +167,11 @@ async def list_model_names() -> list[str]:
         local_models = [m for m in all_models if m not in cloud_models]
 
         result = cloud_models + local_models
-        
+
         # Mettre à jour le cache
         _model_cache["models"] = result
         _model_cache["timestamp"] = now
-        
+
         logger.debug(
             f"Modèles détectés: {len(all_models)} total "
             f"({len(cloud_models)} cloud, {len(local_models)} local)"
@@ -241,11 +241,13 @@ async def process_llm_request(
             # Extraire les documents en parallèle
             doc_tasks = [extract_document_content(doc) for doc in documents]
             doc_contents = await asyncio.gather(*doc_tasks)
-            for doc, doc_content in zip(documents, doc_contents):
+            for doc, doc_content in zip(documents, doc_contents, strict=True):
                 doc_name = os.path.basename(doc)
                 content += f"\n--- Contenu de {doc_name} ---\n{doc_content}\n"
             doc_time = (time.time() - doc_start) * 1000
-            logger.debug(f"[perf] Extraction documents: {doc_time:.1f}ms ({len(documents)} fichiers)")
+            logger.debug(
+                f"[perf] Extraction documents: {doc_time:.1f}ms ({len(documents)} fichiers)"
+            )
 
         interaction.append({"role": "user", "content": content})
 
@@ -264,7 +266,11 @@ async def process_llm_request(
                 selected_model = model_name
 
             messages_for_ollama = interaction.copy()
-            if model_just_changed and messages_for_ollama and messages_for_ollama[0].get("role") == "system":
+            if (
+                model_just_changed
+                and messages_for_ollama
+                and messages_for_ollama[0].get("role") == "system"
+            ):
                 instruction = (
                     "\n\nL'utilisateur vient de changer de modèle. Tu es maintenant le modèle "
                     "sélectionné. Réponds en ton propre nom, pas en reprenant l'identité des "
@@ -277,7 +283,9 @@ async def process_llm_request(
 
             max_context = config.MAX_CONTEXT_MESSAGES
             if len(messages_for_ollama) > max_context + 1:
-                messages_for_ollama = [messages_for_ollama[0]] + messages_for_ollama[-(max_context):]
+                messages_for_ollama = [messages_for_ollama[0]] + messages_for_ollama[
+                    -(max_context):
+                ]
                 logger.debug(
                     f"Contexte tronqué: {len(interaction)} → {len(messages_for_ollama)} messages"
                 )
@@ -296,16 +304,12 @@ async def process_llm_request(
                     err = f"Erreur lors du traitement des images: {str(e)}"
                     return {"message": {"content": err}, "error": True}
 
-            logger.debug(
-                f"Contexte: {len(messages_for_ollama)} messages, modèle={selected_model}"
-            )
+            logger.debug(f"Contexte: {len(messages_for_ollama)} messages, modèle={selected_model}")
 
             client = get_ollama_client()
             num_ctx = (
                 4096
-                if any(
-                    s in selected_model.lower() for s in (":1b", ":2b", "tiny")
-                )
+                if any(s in selected_model.lower() for s in (":1b", ":2b", "tiny"))
                 else config.DEFAULT_NUM_CTX
             )
             opts = {
@@ -351,15 +355,16 @@ async def process_llm_request(
         try:
             response_content = full_content.strip() if full_content else ""
             done_reason = (last_chunk or {}).get("done_reason", "unknown")
-            eval_count = (last_chunk or {}).get("eval_count", 0)
+            eval_count_raw = (last_chunk or {}).get("eval_count", 0)
+            eval_count = int(eval_count_raw) if eval_count_raw is not None else 0
+            max_tokens_val = max_tokens if max_tokens is not None else config.DEFAULT_MAX_TOKENS
             is_truncated = done_reason == "length" or (
-                eval_count > 0 and eval_count >= max_tokens - config.TRUNCATION_THRESHOLD_OFFSET
+                eval_count > 0 and eval_count >= max_tokens_val - config.TRUNCATION_THRESHOLD_OFFSET
             )
 
             if is_truncated:
                 logger.warning(
-                    f"[TRONCATURE] done_reason={done_reason} "
-                    f"eval_count={eval_count}/{max_tokens}"
+                    f"[TRONCATURE] done_reason={done_reason} eval_count={eval_count}/{max_tokens_val}"
                 )
 
             if response_content:
@@ -368,10 +373,12 @@ async def process_llm_request(
                     if stream_callback:
                         await stream_callback(TRUNCATION_WARNING)
                 interaction.append({"role": "assistant", "content": response_content})
-                
+
                 total_time = (time.time() - start_time) * 1000
-                logger.info(f"[perf] Requête complète: {total_time:.1f}ms (modèle={selected_model})")
-                
+                logger.info(
+                    f"[perf] Requête complète: {total_time:.1f}ms (modèle={selected_model})"
+                )
+
                 return {
                     "message": {"content": response_content, "truncated": is_truncated},
                     "model_used": selected_model,
