@@ -378,9 +378,7 @@ async def main(message: cl.Message):
             mode = (
                 f"{len(images)} img"
                 if images
-                else f"{len(documents)} doc"
-                if documents
-                else "texte"
+                else f"{len(documents)} doc" if documents else "texte"
             )
             logger.debug(f"Traitement: {mode}")
 
