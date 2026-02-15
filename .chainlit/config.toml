@@ -1,0 +1,37 @@
+[project]
+enable_telemetry = false
+user_env = []
+session_timeout = 3600
+user_session_timeout = 1296000
+cache = true
+persist_user_session = true
+allow_origins = ["http://localhost:8000"]
+
+[features]
+unsafe_allow_html = false
+latex = false
+auto_tag_thread = true
+edit_message = true
+
+[features.spontaneous_file_upload]
+    enabled = true
+    accept = ["image/*", "application/pdf", "text/markdown", "text/plain"]
+    max_files = 3
+    max_size_mb = 20
+
+[features.audio]
+    sample_rate = 24000
+
+[UI]
+name = "Assistant"
+cot = "full"
+custom_meta_image_url = "/public/papa_pro.jfif"
+show_chainlit_footer = true
+
+[[UI.header_links]]
+    name = "Papa NDIAYE"
+    icon_url = "/public/logo_pbn.png"
+    url = "https://www.linkedin.com/in/papa-bounama-ndiaye/"
+
+[meta]
+generated_by = "2.8.5"
