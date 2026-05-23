@@ -10,25 +10,25 @@ def test_config_loads():
 
 
 def test_production_requires_secrets(monkeypatch):
-    monkeypatch.setenv("ENV", "production")
-    monkeypatch.setenv("AUTH_MODE", "password")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("CHAINLIT_AUTH_SECRET", raising=False)
-    monkeypatch.delenv("AUTH_PASSWORD", raising=False)
+    monkeypatch.setattr(config, "ENV", "production")
+    monkeypatch.setattr(config, "AUTH_MODE", "password")
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+    monkeypatch.setattr(config, "CHAINLIT_AUTH_SECRET", None)
+    monkeypatch.setattr(config, "AUTH_PASSWORD", "")
 
     with pytest.raises(ValueError, match="DATABASE_URL"):
         validate_config()
 
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+    monkeypatch.setattr(config, "DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
     with pytest.raises(ValueError, match="CHAINLIT_AUTH_SECRET"):
         validate_config()
 
-    monkeypatch.setenv("CHAINLIT_AUTH_SECRET", "secret-test")
+    monkeypatch.setattr(config, "CHAINLIT_AUTH_SECRET", "secret-test")
     with pytest.raises(ValueError, match="AUTH_PASSWORD"):
         validate_config()
 
 
 def test_invalid_auth_mode(monkeypatch):
-    monkeypatch.setenv("AUTH_MODE", "invalid")
+    monkeypatch.setattr(config, "AUTH_MODE", "invalid")
     with pytest.raises(ValueError, match="AUTH_MODE"):
         validate_config()

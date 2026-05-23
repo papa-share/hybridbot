@@ -1,11 +1,6 @@
 from chainlit.element import Task, TaskList, TaskStatus
 
 
-def format_source_link(index: int, title: str, url: str) -> str:
-    clean = (title or "Sans titre").replace("\n", " ")
-    return f"{index}. [{clean}]({url})"
-
-
 class WebFlowUI:
     def __init__(self) -> None:
         self._sent = False
@@ -36,14 +31,14 @@ class WebFlowUI:
         elif kind == "source":
             idx = data["index"]
             total = data["total"]
-            title = data.get("title") or "Sans titre"
+            title = (data.get("title") or "Sans titre").replace("\n", " ")
             url = data.get("url") or ""
             self._exa.status = TaskStatus.DONE
             self.task_list.status = f"Sources ({idx}/{total})"
             if url:
                 self._sources.append(
                     Task(
-                        title=format_source_link(idx, title, url),
+                        title=f"{idx}. [{title}]({url})",
                         status=TaskStatus.DONE,
                     )
                 )

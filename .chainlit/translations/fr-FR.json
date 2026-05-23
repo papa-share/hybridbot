@@ -64,6 +64,10 @@
                 "attachFiles": "Joindre des fichiers"
             }
         },
+        "favorites": {
+            "use": "Utiliser un message favori",
+            "headline": "Messages favoris"
+        },
         "speech": {
             "start": "Commencer l'enregistrement",
             "stop": "Arrêter l'enregistrement",

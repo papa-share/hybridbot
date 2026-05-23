@@ -53,6 +53,15 @@ def test_link_citations_dagger():
     assert link_citations(text, sources) == "Info [1](https://a.com) fin."
 
 
+def test_link_citations_fullwidth():
+    sources = [
+        {"index": "1", "title": "A", "url": "https://a.com"},
+        {"index": "2", "title": "B", "url": "https://b.com"},
+    ]
+    out = link_citations("Point 【1】 et 【2】.", sources)
+    assert out == "Point [1](https://a.com) et [2](https://b.com)."
+
+
 def test_link_citations_skips_linked():
     sources = [{"index": "1", "title": "A", "url": "https://a.com"}]
     text = "Voir [1](https://a.com) déjà lié."

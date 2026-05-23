@@ -49,6 +49,8 @@ Avec le web actif, le bot privilégie un modèle cloud compatible `tools`.
 
 **Historique** : barre latérale. Requis : `DATABASE_URL` (PostgreSQL) et `AUTH_MODE=password` dans `.env`. Nouveau fil via le crayon en haut à gauche.
 
+**Favoris** : étoile sur tes messages → réutilisables depuis le composer (historique + login requis).
+
 **Pièces jointes** : PNG, JPG, PDF, Markdown, texte.
 
 **Globe** : recherche Exa. Active-le avant d'envoyer.

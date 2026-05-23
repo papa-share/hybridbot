@@ -76,23 +76,19 @@ config = Config()
 
 
 def validate_config() -> None:
-    auth_mode = os.getenv("AUTH_MODE", "none").strip().lower()
-    database_url = os.getenv("DATABASE_URL", "").strip()
-    env = os.getenv("ENV", "development").strip().lower()
-
-    if auth_mode not in {"none", "password"}:
+    if config.AUTH_MODE not in {"none", "password"}:
         raise ValueError("AUTH_MODE doit être 'none' ou 'password'")
 
-    if env == "production":
-        if not database_url:
+    if config.ENV == "production":
+        if not config.DATABASE_URL:
             raise ValueError("DATABASE_URL requis en production")
-        if not os.getenv("CHAINLIT_AUTH_SECRET"):
+        if not config.CHAINLIT_AUTH_SECRET:
             raise ValueError(
                 "CHAINLIT_AUTH_SECRET requis en production (uv run python -m chainlit create-secret)"
             )
-        if auth_mode != "password":
+        if config.AUTH_MODE != "password":
             raise ValueError("AUTH_MODE=password obligatoire en production")
-        if not os.getenv("AUTH_PASSWORD"):
+        if not config.AUTH_PASSWORD:
             raise ValueError("AUTH_PASSWORD requis en production")
 
 

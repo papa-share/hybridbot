@@ -39,6 +39,7 @@ htmlcov/
 .files/
 tmp/
 docs/
+_*.txt
 
 # Chainlit : UI i18n regeneree au lancement. On versionne fr-FR seulement (language=fr-FR).
 .chainlit/translations/*

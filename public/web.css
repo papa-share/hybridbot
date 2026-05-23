@@ -1,9 +1,9 @@
-/* Masquer le libelle Web a cote du globe (composer) */
+/* Masquer le libelle Web a cote du globe */
 #command-Web .flex.items-center > span {
   display: none;
 }
 
-/* Badge Web -> icone globe dans les messages */
+/* Badge Web dans les messages */
 .command-span {
   font-size: 0;
   line-height: 1;
@@ -176,7 +176,7 @@
   }
 }
 
-/* Citations [1] cliquables dans les reponses web */
+/* Citations web cliquables */
 .ai-message .markdown-body a[href^="http"],
 .ai-message .prose a[href^="http"],
 .ai-message a[href^="http"] {
@@ -193,5 +193,16 @@
 .ai-message .prose a[href^="http"]:hover,
 .ai-message a[href^="http"]:hover {
   text-decoration: underline;
+  opacity: 1;
+}
+
+/* Favoris : etoile visible sur vos messages */
+.step[data-step-type="user_message"] .favorite-message {
+  visibility: visible !important;
+  opacity: 0.8;
+}
+
+.step[data-step-type="user_message"] .favorite-message.text-yellow-500,
+.step[data-step-type="user_message"] .favorite-message:hover {
   opacity: 1;
 }

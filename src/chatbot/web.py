@@ -13,6 +13,7 @@ FlowEvent = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 SOURCE_STAGGER_S = 0.12
 _CITATION_DAGGER = re.compile(r"\[(\d{1,2})[†][^\]]*\]", re.I)
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2})\](?!\]|\()", re.I)
+_CITATION_FULLWIDTH = re.compile(r"【(\d{1,2})】")
 _CITATION_BARE = re.compile(r"\[\[(\d{1,2})\]\](?!\()")
 _SOURCE = re.compile(r"\(source\s*(\d{1,2})\)", re.I)
 _HTML_BREAK = re.compile(r"<br\s*/?>", re.I)
@@ -50,14 +51,18 @@ def _snippet(item) -> str:
     return text[:500] if text else ""
 
 
+def _exa_attr(item, name: str, default: str = "") -> str:
+    return getattr(item, name, None) or default
+
+
 def sources_from_items(items) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for i, item in enumerate(items, 1):
         out.append(
             {
                 "index": str(i),
-                "title": getattr(item, "title", "") or "Sans titre",
-                "url": getattr(item, "url", "") or "",
+                "title": _exa_attr(item, "title", "Sans titre"),
+                "url": _exa_attr(item, "url"),
             }
         )
     return out
@@ -68,14 +73,14 @@ def format_context(items) -> str:
         return "Aucun résultat web."
 
     lines = [
-        "Contexte web (interne). Cite uniquement avec [1], [2], etc. dans le corps du texte.",
+        "Contexte web (interne). Cite uniquement avec [1], [2], etc. (crochets ASCII) dans le corps du texte.",
         "Ne termine pas par une section Sources : les renvois [n] suffisent.",
         "Markdown uniquement, pas de HTML.",
         "",
     ]
     for i, item in enumerate(items, 1):
-        title = getattr(item, "title", "") or "Sans titre"
-        url = getattr(item, "url", "") or ""
+        title = _exa_attr(item, "title", "Sans titre")
+        url = _exa_attr(item, "url")
         body = _snippet(item)
         lines.append(f"[{i}] {title}")
         if url:
@@ -99,7 +104,7 @@ def link_citations(text: str, sources: list[dict[str, str]]) -> str:
             return f"[{n}]({url})"
         return match.group(0)
 
-    for pattern in (_CITATION_DAGGER, _CITATION_BARE, _SOURCE, _CITATION):
+    for pattern in (_CITATION_DAGGER, _CITATION_FULLWIDTH, _CITATION_BARE, _SOURCE, _CITATION):
         text = pattern.sub(repl, text)
     return text
 
@@ -132,7 +137,7 @@ async def search_web(
         return "Clé Exa manquante : ajoute EXA_API_KEY dans .env.", False, []
 
     preview = q if len(q) <= 120 else f"{q[:117]}..."
-    await _emit(on_event, "searching", query=preview)
+    await emit_flow(on_event, "searching", query=preview)
 
     try:
         response = await _client().search(
@@ -149,8 +154,8 @@ async def search_web(
         sources = sources_from_items(items)
         total = len(items)
         for i, item in enumerate(items, 1):
-            title = getattr(item, "title", "") or "Sans titre"
-            url = getattr(item, "url", "") or ""
+            title = _exa_attr(item, "title", "Sans titre")
+            url = _exa_attr(item, "url")
             await emit_flow(on_event, "source", index=i, total=total, title=title, url=url)
             if i < total:
                 await asyncio.sleep(SOURCE_STAGGER_S)

@@ -1,8 +1,10 @@
+import json
 from typing import Any
 
 import chainlit as cl
 from chainlit.data import get_data_layer as get_active_data_layer
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+from chainlit.step import StepDict
 from chainlit.user import User
 
 from chatbot.config import config
@@ -10,11 +12,95 @@ from chatbot.config import config
 CHAT_PREFS_KEY = "chat_prefs"
 PREF_FIELDS = ("model", "temperature", "top_p", "max_tokens")
 
+_FAVORITE_STEPS_SQL = """
+SELECT
+    s."id" AS step_id,
+    s."name" AS step_name,
+    s."type" AS step_type,
+    s."threadId" AS step_threadid,
+    s."parentId" AS step_parentid,
+    s."streaming" AS step_streaming,
+    s."waitForAnswer" AS step_waitforanswer,
+    s."isError" AS step_iserror,
+    s."metadata" AS step_metadata,
+    s."tags" AS step_tags,
+    s."input" AS step_input,
+    s."output" AS step_output,
+    s."createdAt" AS step_createdat,
+    s."start" AS step_start,
+    s."end" AS step_end,
+    s."generation" AS step_generation,
+    s."showInput" AS step_showinput,
+    s."language" AS step_language
+FROM steps s
+JOIN threads t ON s."threadId" = t.id
+WHERE t."userId" = :user_id
+  AND s."metadata" @> CAST(:favorite_filter AS jsonb)
+ORDER BY s."createdAt" DESC
+"""
+
+
+def _step_dict_from_row(row: dict[str, Any]) -> StepDict | None:
+    metadata_raw = row.get("step_metadata")
+    meta_dict: dict[str, Any] = {}
+    if isinstance(metadata_raw, str):
+        try:
+            meta_dict = json.loads(metadata_raw)
+        except json.JSONDecodeError:
+            return None
+    elif isinstance(metadata_raw, dict):
+        meta_dict = metadata_raw
+    else:
+        return None
+
+    if not meta_dict.get("favorite"):
+        return None
+
+    show_input = row.get("step_showinput")
+    return StepDict(
+        id=row["step_id"],
+        name=row["step_name"],
+        type=row["step_type"],
+        threadId=row["step_threadid"],
+        parentId=row["step_parentid"],
+        streaming=row.get("step_streaming", False),
+        waitForAnswer=row.get("step_waitforanswer"),
+        isError=row.get("step_iserror"),
+        metadata=meta_dict,
+        tags=row.get("step_tags"),
+        input=row.get("step_input", "") if show_input not in (None, "false") else "",
+        output=row.get("step_output", ""),
+        createdAt=row.get("step_createdat"),
+        start=row.get("step_start"),
+        end=row.get("step_end"),
+        generation=row.get("step_generation"),
+        showInput=show_input,
+        language=row.get("step_language"),
+        feedback=None,
+    )
+
+
+class PostgresDataLayer(SQLAlchemyDataLayer):
+    async def get_favorite_steps(self, user_id: str) -> list[StepDict]:
+        result = await self.execute_sql(
+            _FAVORITE_STEPS_SQL,
+            {"user_id": user_id, "favorite_filter": '{"favorite": true}'},
+        )
+        if not isinstance(result, list):
+            return []
+        steps: list[StepDict] = []
+        for row in result:
+            step = _step_dict_from_row(row)
+            if step:
+                steps.append(step)
+        return steps
+
+
 if config.DATABASE_URL:
 
     @cl.data_layer
     def get_data_layer():
-        return SQLAlchemyDataLayer(conninfo=config.DATABASE_URL)
+        return PostgresDataLayer(conninfo=config.DATABASE_URL)
 
 
 def default_chat_prefs(default_model: str) -> dict[str, Any]:
@@ -88,6 +174,19 @@ def apply_chat_prefs(prefs: dict[str, Any]) -> None:
         session.chat_settings = {key: prefs[key] for key in PREF_FIELDS}
 
 
+def prefs_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model": settings.get("model") or cl.user_session.get("model_name"),
+        "temperature": settings.get(
+            "temperature", cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE)
+        ),
+        "top_p": settings.get("top_p", cl.user_session.get("top_p", config.DEFAULT_TOP_P)),
+        "max_tokens": settings.get(
+            "max_tokens", cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS)
+        ),
+    }
+
+
 async def save_chat_prefs(prefs: dict[str, Any]) -> None:
     if not config.DATABASE_URL:
         return
@@ -108,9 +207,3 @@ async def save_chat_prefs(prefs: dict[str, Any]) -> None:
 
     metadata[CHAT_PREFS_KEY] = stored
     await data_layer.create_user(User(identifier=user.identifier, metadata=metadata))
-
-
-def model_index(models: list[str], model: str, fallback: int) -> int:
-    if model in models:
-        return models.index(model)
-    return fallback

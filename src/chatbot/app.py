@@ -13,7 +13,7 @@ import chatbot.persistence  # noqa: F401
 from chatbot.persistence import (
     apply_chat_prefs,
     load_chat_prefs,
-    model_index,
+    prefs_from_settings,
     save_chat_prefs,
 )
 from chatbot.config import (
@@ -153,7 +153,7 @@ async def _prepare_settings(*, refresh_models: bool, use_user_store: bool) -> tu
     if prefs["model"] not in models:
         prefs["model"] = models[default_idx] if models else default_label
     apply_chat_prefs(prefs)
-    idx = model_index(models, prefs["model"], default_idx)
+    idx = models.index(prefs["model"]) if prefs["model"] in models else default_idx
     return models, prefs, idx
 
 
@@ -207,12 +207,7 @@ async def start_chat():
 
 @cl.on_settings_update
 async def on_settings_update(settings):
-    prefs = {
-        "model": settings.get("model") or cl.user_session.get("model_name"),
-        "temperature": settings.get("temperature", cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE)),
-        "top_p": settings.get("top_p", cl.user_session.get("top_p", config.DEFAULT_TOP_P)),
-        "max_tokens": settings.get("max_tokens", cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS)),
-    }
+    prefs = prefs_from_settings(settings)
     apply_chat_prefs(prefs)
     await save_chat_prefs(prefs)
 

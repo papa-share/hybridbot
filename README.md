@@ -51,6 +51,7 @@ Tout se pilote depuis l'UI, sans commandes texte :
 | **Globe** | Recherche web Exa (clé `EXA_API_KEY`) |
 | **Trombone** | Pièces jointes (images, PDF, texte) |
 | **Barre latérale** | Historique des conversations (si PostgreSQL actif) |
+| **Étoile** | Favoris : sauvegarder un message et le réutiliser (login + PostgreSQL) |
 
 Guide utilisateur détaillé : [chainlit.md](chainlit.md) (lien « Lisez-moi » dans l'app).
 

@@ -8,7 +8,7 @@ import aiofiles
 import ollama
 from ollama import AsyncClient
 
-from chatbot.config import DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, config, logger
+from chatbot.config import DOCUMENT_EXTENSIONS, config, logger
 from chatbot.validators import validate_image_path
 from chatbot.web import emit_flow, link_citations, normalize_response, search_web, strip_sources_footer
 
@@ -23,11 +23,20 @@ except ImportError:
 _client: AsyncClient | None = None
 _catalog: dict[str, list[str]] | None = None
 
-_LABEL_PREFIXES = ("[local] ", "[cloud] ", "[vision local] ", "[vision cloud] ")
+_CATALOG_PREFIXES = (
+    ("chat_local", "[local] "),
+    ("vision_local", "[vision local] "),
+    ("chat_cloud", "[cloud] "),
+    ("vision_cloud", "[vision cloud] "),
+)
+
+
+def _rank_preferred(pool: list[str], preferred: list[str]) -> list[str]:
+    return preferred + [name for name in pool if name not in preferred]
 
 
 def model_from_label(label: str) -> str:
-    for prefix in _LABEL_PREFIXES:
+    for _, prefix in _CATALOG_PREFIXES:
         if label.startswith(prefix):
             return label[len(prefix) :]
     return label
@@ -185,24 +194,14 @@ async def get_catalog(refresh: bool = False) -> dict[str, list[str]]:
 
 def build_model_labels(catalog: dict[str, list[str]]) -> list[str]:
     labels: list[str] = []
-    for name in catalog["chat_local"]:
-        labels.append(f"[local] {name}")
-    for name in catalog["vision_local"]:
-        labels.append(f"[vision local] {name}")
-    for name in catalog["chat_cloud"]:
-        labels.append(f"[cloud] {name}")
-    for name in catalog["vision_cloud"]:
-        labels.append(f"[vision cloud] {name}")
+    for key, prefix in _CATALOG_PREFIXES:
+        for name in catalog[key]:
+            labels.append(f"{prefix}{name}")
     return labels
 
 
 def label_for_model(catalog: dict[str, list[str]], model_id: str) -> str:
-    for key, prefix in (
-        ("chat_local", "[local] "),
-        ("vision_local", "[vision local] "),
-        ("chat_cloud", "[cloud] "),
-        ("vision_cloud", "[vision cloud] "),
-    ):
+    for key, prefix in _CATALOG_PREFIXES:
         if model_id in catalog.get(key, []):
             return f"{prefix}{model_id}"
     return model_id
@@ -215,8 +214,8 @@ def _vision_pool(catalog: dict[str, list[str]]) -> list[str]:
 async def vision_candidates() -> list[str]:
     catalog = await get_catalog()
     pool = _vision_pool(catalog)
-    preferred = [n for n in config.VISION_MODELS if n in pool]
-    return preferred + [n for n in pool if n not in preferred]
+    preferred = [name for name in config.VISION_MODELS if name in pool]
+    return _rank_preferred(pool, preferred)
 
 
 def _web_pool(catalog: dict[str, list[str]]) -> list[str]:
@@ -245,7 +244,7 @@ async def web_candidates() -> list[str]:
     for name in config.WEB_SEARCH_MODELS + [config.DEFAULT_WEB_MODEL]:
         if name in pool and name not in preferred:
             preferred.append(name)
-    return preferred + [n for n in pool if n not in preferred]
+    return _rank_preferred(pool, preferred)
 
 
 def _retryable_model_error(error: Exception) -> bool:

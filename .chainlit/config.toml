@@ -10,6 +10,7 @@ unsafe_allow_html = false
 latex = false
 auto_tag_thread = true
 edit_message = true
+favorites = true
 
 # max_files / max_size_mb = limite UI ; re-validation serveur via MAX_* dans .env
 [features.spontaneous_file_upload]
