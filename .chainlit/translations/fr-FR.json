@@ -57,7 +57,7 @@
     },
     "chat": {
         "input": {
-            "placeholder": "Tapez votre message ici...",
+            "placeholder": "Écris ici...",
             "actions": {
                 "send": "Envoyer le message",
                 "stop": "Arrêter la tâche",

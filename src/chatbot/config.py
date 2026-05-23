@@ -1,134 +1,108 @@
-"""Configuration centralisée de l'application."""
-
+import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
+DEFAULT_USER_ID = "local_user"
+DEFAULT_USER_NAME = "Utilisateur"
+DEFAULT_THREAD_NAME = "Nouvelle conversation"
+TEMPERATURE_STEP = 0.1
+TOP_P_STEP = 0.05
+
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".tiff")
+DOCUMENT_EXTENSIONS = (".pdf", ".md", ".txt")
+MIME_IMAGE_PREFIX = "image/"
+MIME_PDF = "application/pdf"
+MIME_TEXT_PREFIX = "text/"
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _parse_list(key: str, default: list[str]) -> list[str]:
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
 
 class Config:
-    """Configuration de base."""
+    ENV = os.getenv("ENV", "development").strip().lower()
 
-    # Modes d'authentification et persistance
     AUTH_MODE = os.getenv("AUTH_MODE", "none").strip().lower()
+    AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "")
     PERSISTENCE = os.getenv("PERSISTENCE", "none").strip().lower()
-    DEBUG = os.getenv("DEBUG", "0").lower() in {"1", "true", "yes"}
+    DEBUG = _env_bool("DEBUG", default=ENV != "production")
 
-    # Limites de fichiers
     MAX_IMAGE_SIZE_MB = int(os.getenv("MAX_IMAGE_SIZE_MB", "20"))
     MAX_DOCUMENT_SIZE_MB = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "2"))
     MAX_FILES = int(os.getenv("MAX_FILES", "3"))
 
-    # Timeouts et performance
-    OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))  # secondes
+    OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
     OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-    # Sécurité
+    EXA_API_KEY = os.getenv("EXA_API_KEY", "")
+
     CHAINLIT_AUTH_SECRET = os.getenv("CHAINLIT_AUTH_SECRET")
-
-    # Modèles IA
     DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-oss:120b-cloud")
+    DEFAULT_WEB_MODEL = os.getenv("DEFAULT_WEB_MODEL", "gpt-oss:120b-cloud")
 
-    # Modèles vision (supportent l'analyse d'images)
-    # Note : Certains modèles vision cloud apparaissent aussi dans KNOWN_CLOUD_MODELS
-    # car ils sont à la fois capables de vision et disponibles en mode cloud
-    VISION_MODELS = [
-        "qwen3-vl:235b-instruct-cloud",
-        "qwen3-vl:235b-cloud",
-        "glm-4.6:cloud",
-        "llava:latest",
-        "llava:13b",
-        "llava:7b",
-        "bakllava:latest",
-    ]
+    VISION_MODELS = _parse_list("VISION_MODELS", [])
+    WEB_SEARCH_MODELS = _parse_list("WEB_SEARCH_MODELS", [])
 
-    # Modèles cloud connus (fallback si ollama list échoue)
-    KNOWN_CLOUD_MODELS = [
-        "gpt-oss:120b-cloud",
-        "kimi-k2:1t-cloud",
-        "qwen3-coder:480b-cloud",
-        "deepseek-v3.1:671b-cloud",
-        "glm-4.6:cloud",
-        "qwen3-vl:235b-instruct-cloud",
-    ]
+    WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "5"))
+    WEB_SEARCH_NUM_CTX = int(os.getenv("WEB_SEARCH_NUM_CTX", "32768"))
 
-    # Paramètres LLM par défaut et plages (centralisés)
-    DEFAULT_TEMPERATURE = 0.4
-    DEFAULT_TOP_P = 0.9
-    DEFAULT_MAX_TOKENS = 1024
+    DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.4"))
+    DEFAULT_TOP_P = float(os.getenv("DEFAULT_TOP_P", "0.9"))
+    DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1024"))
     MAX_TOKENS_MIN = 100
     MAX_TOKENS_MAX = 8192
     MAX_TOKENS_STEP = 256
 
-    # Ollama
-    DEFAULT_NUM_CTX = 8192
-    TRUNCATION_THRESHOLD_OFFSET = 10
+    DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
     MAX_CONTEXT_MESSAGES = int(os.getenv("MAX_CONTEXT_MESSAGES", "20"))
 
-    # UI et DB
     MAX_TITLE_LENGTH = 50
-    DEFAULT_PAGINATION_LIMIT = 20
-    DEFAULT_DB_PATH = "./chainlit.db"
+    DB_PATH = os.getenv("DB_PATH", "./chainlit.db")
 
-    # Prompt système optimisé
-    SYSTEM_PROMPT = (
-        "Tu es un assistant IA expert, polyvalent et adaptatif. Tu possèdes des connaissances "
-        "approfondies dans de nombreux domaines : sciences, technologie, programmation, "
-        "médecine, droit, économie, histoire, arts, littérature, philosophie, actualités, "
-        "sport, culture, et bien d'autres. Tu peux analyser des images, résoudre des problèmes "
-        "complexes, expliquer des concepts techniques, aider avec du code, donner des conseils "
-        "pratiques, et répondre à des questions variées. Tu réponds toujours en français de "
-        "manière claire, précise, détaillée et adaptative. Tu adaptes ton niveau d'explication "
-        "selon la question posée et le contexte.\n\n"
-        "NEUTRALITE ET EGALITE DE TRAITEMENT:\n"
-        "Tu traites TOUTES les questions de manière égale et sans biais, que ce soit "
-        "sport, technologie, science, politique, économie, culture, actualités, personnes "
-        "publiques, événements historiques ou récents, ou tout autre domaine. Chaque question "
-        "mérite la même rigueur et attention.\n\n"
-        "REGLES ANTI-HALLUCINATION:\n"
-        "1. Ne JAMAIS inventer de faits, dates, chiffres, noms ou détails non vérifiés.\n"
-        "2. Utilise tes connaissances générales pour répondre, mais indique clairement quand "
-        "tu n'es pas certain ou quand tes connaissances peuvent être limitées.\n"
-        "3. Si tu ne connais pas une information spécifique, dis-le honnêtement plutôt que "
-        "d'inventer.\n"
-        "4. Pour les événements très récents ou actualités, indique que tes connaissances "
-        "peuvent être limitées par ta date de formation.\n\n"
-        "ADAPTABILITE:\n"
-        "1. Adapte ta réponse selon le type de question: questions factuelles nécessitent des "
-        "réponses précises, questions conceptuelles peuvent être plus exploratoires.\n"
-        "2. Sois utile: plutôt que de dire simplement 'je ne sais pas', essaie de fournir "
-        "ce qui est disponible et indique les limites.\n"
-        "3. Structure tes réponses de manière claire et organisée."
-    )
+    SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "Réponds en français, court et factuel.")
 
 
-class ProductionConfig(Config):
-    """Configuration pour la production."""
-
-    DEBUG = False
-    AUTH_MODE = "password"
-    MAX_IMAGE_SIZE_MB = 20
-    MAX_DOCUMENT_SIZE_MB = 2
-    MAX_FILES = 3
+config = Config()
 
 
-class DevelopmentConfig(Config):
-    """Configuration pour le développement."""
+def validate_config() -> None:
+    auth_mode = os.getenv("AUTH_MODE", "none").strip().lower()
+    persistence = os.getenv("PERSISTENCE", "none").strip().lower()
+    env = os.getenv("ENV", "development").strip().lower()
 
-    DEBUG = True
+    if auth_mode not in {"none", "password"}:
+        raise ValueError("AUTH_MODE doit être 'none' ou 'password'")
+    if persistence not in {"none", "local"}:
+        raise ValueError("PERSISTENCE doit être 'none' ou 'local'")
+
+    if env == "production":
+        if not os.getenv("CHAINLIT_AUTH_SECRET"):
+            raise ValueError("CHAINLIT_AUTH_SECRET requis en production (chainlit create-secret)")
+        if auth_mode != "password":
+            raise ValueError("AUTH_MODE=password obligatoire en production")
+        if not os.getenv("AUTH_PASSWORD"):
+            raise ValueError("AUTH_PASSWORD requis en production")
 
 
-ENV = os.getenv("ENV", "development").lower()
-config = ProductionConfig() if ENV == "production" else DevelopmentConfig()
-if ENV == "production":
-    if not config.CHAINLIT_AUTH_SECRET:
-        raise ValueError(
-            "CHAINLIT_AUTH_SECRET est requis en production. "
-            "Générez-en un avec: chainlit create-secret"
-        )
-    if config.AUTH_MODE == "none":
-        raise ValueError(
-            "L'authentification est obligatoire en production. "
-            "Définissez AUTH_MODE=password dans votre fichier .env"
-        )
+validate_config()
+
+logger = logging.getLogger("chatbot")
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+    logger.addHandler(_handler)

@@ -1,0 +1,69 @@
+/* Masquer le libelle Web a cote du globe */
+#command-Web .flex.items-center > span {
+  display: none;
+}
+
+/* Accueil centre tant qu'il n'y a pas de message utilisateur */
+body:not(:has([data-step-type="user_message"])) .relative.flex.flex-col.flex-grow.overflow-y-auto > .flex.flex-col.flex-grow.overflow-y-auto {
+  justify-content: center;
+}
+
+body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] .ai-message {
+  justify-content: center;
+  width: auto;
+  max-width: 32rem;
+}
+
+body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] .ai-message > .flex.flex-col.items-start {
+  align-items: center;
+  text-align: center;
+}
+
+/* TaskList recherche web */
+[data-testid="tasklist"] a {
+  color: var(--primary, #d946ef);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+[data-testid="tasklist"] a:hover {
+  opacity: 0.85;
+}
+
+[data-testid="tasklist"] [data-status="running"] {
+  animation: web-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes web-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Citations [1] cliquables */
+.ai-message .markdown-body a[href^="http"],
+.ai-message .prose a[href^="http"] {
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: super;
+  text-decoration: none;
+  opacity: 0.8;
+}
+
+.ai-message .markdown-body a[href^="http"]:hover,
+.ai-message .prose a[href^="http"]:hover {
+  text-decoration: underline;
+  opacity: 1;
+}

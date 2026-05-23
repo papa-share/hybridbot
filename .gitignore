@@ -28,6 +28,7 @@ wheels/
 
 # Tests et outils
 .pytest_cache/
+pytest-cache-files-*/
 .coverage
 htmlcov/
 .ruff_cache/
@@ -37,7 +38,13 @@ htmlcov/
 # Projet
 chainlit.db
 *.db
+.files/
+tmp/
 docs/
+
+# Chainlit : UI i18n regeneree au lancement. On versionne fr-FR seulement (language=fr-FR).
+.chainlit/translations/*
+!.chainlit/translations/fr-FR.json
 # IDE et OS
 .idea/
 .vscode/

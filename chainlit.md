@@ -1,60 +1,80 @@
-# Assistant IA Hybride
+# OllamaHybridBot
 
-Assistant conversationnel avec support local et cloud. Interface en français, analyse de fichiers, et paramètres configurables.
+Assistant de conversation branché sur **Ollama**. Tu écris ici, il répond via les modèles installés localement ou dans le cloud Ollama.
 
-## Fonctionnalités
+## C'est quoi
 
-- **Chat** : Streaming des réponses en temps réel
-- **Analyse de fichiers** : Images (50MB max), PDF et Markdown (2MB max)
-- **Paramètres** : Température, top_p, tokens max
-- **Hybride** : Modèles cloud (gratuits) et locaux (confidentiels)
-- **Persistance** : Sauvegarde automatique dans SQLite
+Un chat unique qui regroupe ce qu'on attend d'un assistant perso :
 
-## Démarrage
+- répondre en français, de façon directe
+- lire du code, un PDF, un fichier texte
+- analyser une image (même si tu as sélectionné un modèle texte)
+- chercher sur le web quand tu actives le globe
 
-1. Tapez votre message dans la zone de texte
-2. Uploadez des fichiers via l'icône de pièce jointe (images, PDF, Markdown)
-3. Ajustez les paramètres via l'icône de paramètres (haut à droite)
-4. Consultez les réponses générées en temps réel
+Pas de compte tiers pour le LLM : tout passe par ton instance Ollama. Le web, lui, utilise Exa (clé dans `.env`).
 
-## Panneau de Paramètres
+## Comment ça se passe
 
-Cliquez sur l'icône de paramètres pour personnaliser votre expérience :
+**Sans globe** : ton message part tel quel vers Ollama. Le modèle choisi dans les réglages répond.
 
-| Paramètre | Description | Valeurs |
-|-----------|-------------|---------|
-| **Modèle IA** | Choix du modèle (local ou cloud) | Liste dynamique |
-| **Température** | Créativité des réponses | 0 (précis) → 1 (créatif) |
-| **Top P** | Diversité du vocabulaire | 0 → 1 |
-| **Tokens max** | Longueur des réponses | 100 → 8192 |
+**Avec globe** (avant d'envoyer) :
+
+1. Exa cherche des pages en lien avec ta question
+2. les extraits sont injectés au modèle
+3. tu reçois une synthèse avec des renvois `[1]`, `[2]` cliquables vers les sources
+4. le panneau Tasks montre la progression pendant la recherche
+
+**Avec une image** : si le modèle actif ne fait pas de vision, le bot bascule seul sur un modèle vision disponible (cloud en priorité).
+
+**Avec un fichier** : le contenu est lu et joint au message (PDF, `.md`, `.txt`).
+
+## Modèles
+
+La liste distingue quatre familles :
+
+| Préfixe | Où ça tourne |
+| --- | --- |
+| `[local]` | Ta machine |
+| `[cloud]` | Cloud Ollama |
+| `[vision local]` | Vision locale |
+| `[vision cloud]` | Vision cloud |
+
+Embeddings, OCR, whisper et rerankers sont filtrés : seuls les modèles de chat utiles apparaissent.
+
+Avec le web actif, le bot privilégie un modèle cloud compatible `tools`.
 
 ## Commandes
 
-Tapez ces commandes directement dans le chat :
+| Commande | Effet |
+| --- | --- |
+| `/model <nom>` | Affiche ou change le modèle |
+| `/clear` | Efface la conversation en cours |
+| `/history` | Où retrouver les anciens fils |
 
-| Commande | Action |
-|----------|--------|
-| `/model <nom>` | Changer de modèle manuellement |
-| `/help` | Afficher l'aide complète |
-| `/clear` | Réinitialiser la conversation |
-| `/history` | Aide sur l'historique |
+Historique des fils : `PERSISTENCE=local` et `AUTH_MODE=password` dans `.env`.
 
-## Sauvegarde
+## Interface
 
-Vos conversations sont automatiquement sauvegardées dans une base SQLite locale. Vos données restent privées et sur votre machine.
+**Pièces jointes** : PNG, JPG, PDF, Markdown, texte.
 
-Note : La sidebar d'historique native nécessitait Literal AI (cloud), qui a été discontinué en octobre 2025. La persistance locale fonctionne via Custom Data Layer SQLite, mais l'accès à l'historique nécessite `PERSISTENCE=local` ET `AUTH_MODE=password`.
+**Globe** : recherche Exa. Active-le avant d'envoyer.
 
-## Architecture
+**Réglages** : modèle, température, top P, tokens max.
 
-### Modèles cloud
-- API Ollama (suffixes `:cloud`)
-- Pas de recherche web intégrée
-- Usage : prototypage, données non sensibles
+## Limites
 
-### Modèles locaux
-- Exécution sur machine locale
-- Données privées
-- Usage : données sensibles, conformité RGPD
+5 fichiers max, images 50 Mo, PDF/texte 2 Mo.
 
-Changer de modèle via le panneau Settings.
+## Variables `.env`
+
+| Variable | Rôle |
+| --- | --- |
+| `OLLAMA_URL` | Ollama (défaut `http://localhost:11434`) |
+| `DEFAULT_MODEL` | Modèle au lancement |
+| `DEFAULT_WEB_MODEL` | Modèle prioritaire pour le web |
+| `EXA_API_KEY` | Recherche web |
+| `WEB_SEARCH_MAX_RESULTS` | Nombre de sources Exa (défaut 5) |
+| `PERSISTENCE` | `none` ou `local` (SQLite) |
+| `AUTH_MODE` | `none` ou `password` |
+
+Prod : `.env.production`. Détail : `.env.example`.

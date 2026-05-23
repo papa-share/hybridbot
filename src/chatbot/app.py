@@ -1,4 +1,8 @@
-"""Application Chainlit - Point d'entrée principal."""
+import os
+
+os.environ["TRACELOOP_TRACING_ENABLED"] = "false"
+os.environ["TRACELOOP_METRICS_ENABLED"] = "false"
+os.environ["TRACELOOP_TRACE_CONTENT"] = "false"
 
 import uuid
 from typing import Any
@@ -6,68 +10,53 @@ from typing import Any
 import chainlit as cl
 from chainlit.input_widget import Select, Slider
 
-from chatbot.config import config
-from chatbot.constants import (
+from chatbot.config import (
     DEFAULT_THREAD_NAME,
     DEFAULT_USER_ID,
     DEFAULT_USER_NAME,
     TEMPERATURE_STEP,
     TOP_P_STEP,
+    config,
+    logger,
 )
-from chatbot.core.llm import list_model_names, process_llm_request
-from chatbot.data.sqlite_layer import SQLiteDataLayer
-from chatbot.logger import logger
-from chatbot.messages import (
-    CONVERSATION_RESET,
-    CONVERSATION_RESUMED,
-    ERROR_INTERNAL,
-    HELP,
-    HISTORY,
-    MODEL_CURRENT,
-    MODEL_SET,
-    RESUME_NOT_AVAILABLE,
-    VISION_MODEL_USED,
-    WELCOME,
+from chatbot.llm import (
+    build_model_labels,
+    get_catalog,
+    label_for_model,
+    model_from_label,
+    process_llm_request,
 )
-from chatbot.utils.validators import validate_uploaded_files
+from chatbot.sqlite import SQLiteDataLayer
+from chatbot.validators import validate_uploaded_files
+from chatbot.web_flow import WebFlowUI
 
-# Configuration
-DATA_LAYER_ENABLED = config.PERSISTENCE == "local"
+USE_DB = config.PERSISTENCE == "local"
+cl.data_layer = SQLiteDataLayer(config.DB_PATH) if USE_DB else None
 
-# Initialisation du Data Layer
-if DATA_LAYER_ENABLED:
-    cl.data_layer = SQLiteDataLayer(config.DEFAULT_DB_PATH)
-    if config.DEBUG:
-        logger.debug("Data Layer initialisé")
-else:
-    cl.data_layer = None
+WEB_COMMAND = "Web"
+WELCOME = "Salut. Qu'est-ce qu'on fait ?"
+
+HELP = """Commandes :
+- /model <nom> : changer de modèle
+- /help : cette aide
+- /clear : effacer la conversation
+- /history : infos historique
+
+Web : globe dans la barre (EXA_API_KEY requise)."""
+
 
 if config.AUTH_MODE == "password":
 
     @cl.password_auth_callback
-    async def auth_callback(username: str, _password: str) -> cl.User | None:
-        """
-        Callback d'authentification pour Chainlit.
+    async def auth_callback(username: str, password: str) -> cl.User | None:
+        if config.AUTH_PASSWORD and password != config.AUTH_PASSWORD:
+            return None
 
-        Accepte n'importe quel nom d'utilisateur sans vérification de mot de passe
-        (authentification symbolique). Crée l'utilisateur dans la base de données
-        si la persistance est activée.
-
-        Args:
-            username: Nom d'utilisateur fourni
-            _password: Mot de passe (non vérifié dans cette implémentation)
-
-        Returns:
-            Objet User Chainlit ou None si l'authentification échoue
-        """
         user_id = username or DEFAULT_USER_ID
         user_name = username or DEFAULT_USER_NAME
 
-        if not DATA_LAYER_ENABLED:
-            return cl.User(
-                identifier=user_id,
-                metadata={"role": "user", "name": user_name},
-            )
+        if not USE_DB:
+            return cl.User(identifier=user_id, metadata={"role": "user", "name": user_name})
 
         user = await cl.data_layer.get_user(user_id)
         if not user:
@@ -78,119 +67,84 @@ if config.AUTH_MODE == "password":
                     "metadata": {"role": "user", "name": user_name},
                 }
             )
-
         return cl.User(identifier=user_id, metadata=user.get("metadata", {}))
 
 
-def _get_session_params() -> dict[str, Any]:
-    """
-    Récupère les paramètres LLM de la session avec valeurs par défaut.
-
-    Returns:
-        Dictionnaire contenant model_name, temperature, top_p et max_tokens
-    """
+def _session_params() -> dict[str, Any]:
+    raw = cl.user_session.get("model_name") or config.DEFAULT_MODEL
     return {
-        "model_name": (cl.user_session.get("model_name") or config.DEFAULT_MODEL).strip(),
+        "model_name": model_from_label(raw.strip()),
+        "model_label": raw,
         "temperature": cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE),
         "top_p": cl.user_session.get("top_p", config.DEFAULT_TOP_P),
         "max_tokens": cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS),
     }
 
 
-async def _create_step_safe(thread_id: str, step_type: str, content: str, name: str) -> None:
-    """
-    Crée un step de conversation avec gestion d'erreurs robuste.
-
-    Args:
-        thread_id: Identifiant du thread de conversation
-        step_type: Type de step ("user_message" ou "assistant_message")
-        content: Contenu du message
-        name: Nom descriptif du step
-    """
-    if not DATA_LAYER_ENABLED or not thread_id:
-        return
-    try:
-        await cl.data_layer.create_step(
-            {
-                "id": str(uuid.uuid4()),
-                "threadId": thread_id,
-                "type": step_type,
-                "name": name,
-                "output": content,
-            }
-        )
-    except LookupError:
-        logger.warning("[DATA_LAYER] Impossible de créer le step (ContextVar non initialisé)")
-    except Exception as e:
-        logger.error(f"Sauvegarde step {step_type}: {type(e).__name__}: {e}")
+def _init_interaction() -> None:
+    cl.user_session.set("interaction", [{"role": "system", "content": config.SYSTEM_PROMPT}])
 
 
-@cl.on_chat_start
-async def start_chat():
-    """
-    Initialise une nouvelle session de conversation.
-
-    Configure l'historique, crée le thread dans la base de données si la persistance
-    est activée, affiche le message de bienvenue, et configure les paramètres UI
-    (sliders, sélection de modèle).
-    """
-    welcome_sent = cl.user_session.get("welcome_message_sent", False)
-
-    cl.user_session.set(
-        "interaction",
-        [{"role": "system", "content": config.SYSTEM_PROMPT}],
-    )
-
-    logger.info("Nouvelle conversation démarrée")
-
-    if DATA_LAYER_ENABLED:
-        user = cl.user_session.get("user")
-        if user:
-            thread_id = str(uuid.uuid4())
-            await cl.data_layer.create_thread(
-                {
-                    "id": thread_id,
-                    "name": DEFAULT_THREAD_NAME,
-                    "userId": user.identifier,
-                    "metadata": {},
-                }
-            )
-            cl.user_session.set("thread_id", thread_id)
-
+def _reset_chat() -> None:
+    _init_interaction()
     cl.user_session.set("title_set", False)
+    cl.user_session.set("welcome_message_sent", False)
+    cl.user_session.set("vision_model_used", False)
 
-    if not welcome_sent:
-        await cl.Message(content=WELCOME).send()
-        cl.user_session.set("welcome_message_sent", True)
 
-    models = await list_model_names()
-    default_model_index = 0
-    if models:
-        try:
-            default_model_index = models.index(config.DEFAULT_MODEL)
-        except ValueError:
-            default_model_index = 0
-
-    params = _get_session_params()
-    cl.user_session.set(
-        "model_name", models[default_model_index] if models else params["model_name"]
+async def _set_composer_commands() -> None:
+    await cl.context.emitter.set_commands(
+        [
+            {
+                "id": WEB_COMMAND,
+                "icon": "globe",
+                "description": "Recherche web",
+                "button": True,
+                "persistent": True,
+            }
+        ]
     )
-    cl.user_session.set("temperature", params["temperature"])
-    cl.user_session.set("top_p", params["top_p"])
-    cl.user_session.set("max_tokens", params["max_tokens"])
 
+
+async def _create_thread() -> None:
+    if not USE_DB:
+        return
+    user = cl.user_session.get("user")
+    if not user:
+        return
+    thread_id = str(uuid.uuid4())
+    await cl.data_layer.create_thread(
+        {
+            "id": thread_id,
+            "name": DEFAULT_THREAD_NAME,
+            "userId": user.identifier,
+            "metadata": {},
+        }
+    )
+    cl.user_session.set("thread_id", thread_id)
+
+
+async def _load_models(refresh: bool) -> tuple[list[str], str, int]:
+    catalog = await get_catalog(refresh=refresh)
+    models = build_model_labels(catalog)
+    default_label = label_for_model(catalog, config.DEFAULT_MODEL)
+    idx = models.index(default_label) if default_label in models else 0
+    return models, default_label, idx
+
+
+async def _send_settings(models: list[str], default_label: str, idx: int) -> None:
     await cl.ChatSettings(
         [
             Select(
                 id="model",
-                label="Modèle IA",
-                values=models if models else [config.DEFAULT_MODEL],
-                initial_index=default_model_index if models else 0,
+                label="Modèle",
+                values=models or [default_label],
+                initial_index=idx,
             ),
             Slider(
                 id="temperature",
                 label="Température",
-                initial=config.DEFAULT_TEMPERATURE,
+                initial=cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE),
                 min=0,
                 max=1,
                 step=TEMPERATURE_STEP,
@@ -198,7 +152,7 @@ async def start_chat():
             Slider(
                 id="top_p",
                 label="Top P",
-                initial=config.DEFAULT_TOP_P,
+                initial=cl.user_session.get("top_p", config.DEFAULT_TOP_P),
                 min=0,
                 max=1,
                 step=TOP_P_STEP,
@@ -206,7 +160,7 @@ async def start_chat():
             Slider(
                 id="max_tokens",
                 label="Tokens max",
-                initial=config.DEFAULT_MAX_TOKENS,
+                initial=cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS),
                 min=config.MAX_TOKENS_MIN,
                 max=config.MAX_TOKENS_MAX,
                 step=config.MAX_TOKENS_STEP,
@@ -215,226 +169,234 @@ async def start_chat():
     ).send()
 
 
+async def _save_step(thread_id: str, step_type: str, content: str) -> None:
+    if not USE_DB or not thread_id:
+        return
+    try:
+        await cl.data_layer.create_step(
+            {
+                "id": str(uuid.uuid4()),
+                "threadId": thread_id,
+                "type": step_type,
+                "name": step_type,
+                "output": content,
+            }
+        )
+    except Exception as e:
+        logger.warning(f"Step non sauvegardé: {e}")
+
+
+async def _handle_command(text: str) -> bool:
+    if text.startswith("/model"):
+        parts = text.split(" ", 1)
+        if len(parts) == 1 or not parts[1].strip():
+            current = cl.user_session.get("model_name") or config.DEFAULT_MODEL
+            await cl.Message(content=f"Modèle actuel : {current}\nUsage : /model <nom>").send()
+            return True
+        name = parts[1].strip()
+        cl.user_session.set("model_name", name)
+        await cl.Message(content=f"Modèle : {name}").send()
+        return True
+
+    if text.startswith("/help"):
+        await cl.Message(content=HELP).send()
+        return True
+
+    if text.startswith("/history"):
+        await cl.Message(
+            content=(
+                "Historique : menu en haut à gauche. "
+                "Requis : PERSISTENCE=local et AUTH_MODE=password."
+            )
+        ).send()
+        return True
+
+    if text.startswith("/clear"):
+        _reset_chat()
+        await cl.Message(content="Conversation effacée.").send()
+        await cl.Message(content=WELCOME).send()
+        cl.user_session.set("welcome_message_sent", True)
+        return True
+
+    return False
+
+
+async def _maybe_set_thread_title(text: str) -> None:
+    if cl.user_session.get("title_set"):
+        return
+
+    title = text[: config.MAX_TITLE_LENGTH] + ("..." if len(text) > config.MAX_TITLE_LENGTH else "")
+    tid = cl.user_session.get("thread_id")
+    if tid and USE_DB:
+        try:
+            p = _session_params()
+            await cl.data_layer.update_thread(
+                tid,
+                name=title,
+                metadata={
+                    "model": p["model_name"],
+                    "temperature": p["temperature"],
+                    "top_p": p["top_p"],
+                    "max_tokens": p["max_tokens"],
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Titre thread: {e}")
+    cl.user_session.set("title_set", True)
+
+
+def _interaction() -> list[dict[str, Any]]:
+    interaction = cl.user_session.get("interaction")
+    if isinstance(interaction, list):
+        return interaction
+    _init_interaction()
+    return cl.user_session.get("interaction")
+
+
+async def _reply(result: dict[str, Any], msg: cl.Message, tid: str | None, params: dict) -> None:
+    if result.get("has_images") and not cl.user_session.get("vision_model_used"):
+        model_used = result.get("model_used", params["model_name"])
+        if model_used != params["model_name"] and not result.get("error"):
+            await cl.Message(content=f"Image analysée avec : {model_used}").send()
+            cl.user_session.set("vision_model_used", True)
+
+    if result.get("error"):
+        content = (result.get("message") or {}).get("content") or "Erreur interne. Réessaie."
+        await cl.Message(content=content).send()
+        await _save_step(tid, "assistant_message", content)
+        return
+
+    content = (result.get("message") or {}).get("content") or msg.content
+    msg.content = content
+    await msg.send()
+    await _save_step(tid, "assistant_message", content)
+
+
+@cl.on_chat_start
+async def start_chat():
+    _init_interaction()
+    cl.user_session.set("vision_model_used", False)
+    cl.user_session.set("title_set", False)
+
+    await _create_thread()
+
+    models, default_label, idx = await _load_models(refresh=True)
+    active_label = models[idx] if models else default_label
+    cl.user_session.set("model_name", active_label)
+    cl.user_session.set("temperature", config.DEFAULT_TEMPERATURE)
+    cl.user_session.set("top_p", config.DEFAULT_TOP_P)
+    cl.user_session.set("max_tokens", config.DEFAULT_MAX_TOKENS)
+
+    if not cl.user_session.get("welcome_message_sent"):
+        await cl.Message(content=WELCOME).send()
+        cl.user_session.set("welcome_message_sent", True)
+
+    await _set_composer_commands()
+    await _send_settings(models, default_label, idx)
+
+
 @cl.on_settings_update
 async def on_settings_update(settings):
-    """
-    Met à jour les paramètres de la session utilisateur.
-
-    Appelée automatiquement par Chainlit lorsque l'utilisateur modifie
-    les réglages via le panneau de configuration (modèle, température, etc.).
-
-    Args:
-        settings: Dictionnaire des nouveaux paramètres
-    """
-    params = _get_session_params()
-    model_name = settings.get("model")
-    temperature = settings.get("temperature", params["temperature"])
-    top_p = settings.get("top_p", params["top_p"])
-    max_tokens = settings.get("max_tokens", params["max_tokens"])
-
-    if model_name:
-        previous = cl.user_session.get("model_name")
-        if previous is not None and previous.strip() != model_name.strip():
-            cl.user_session.set("model_just_changed", True)
-        cl.user_session.set("model_name", model_name)
-
-    cl.user_session.set("temperature", temperature)
-    cl.user_session.set("top_p", top_p)
-    cl.user_session.set("max_tokens", max_tokens)
-    logger.debug("[SETTINGS] Paramètres mis à jour")
+    if settings.get("model"):
+        cl.user_session.set("model_name", settings["model"])
+    if settings.get("temperature") is not None:
+        cl.user_session.set("temperature", settings["temperature"])
+    if settings.get("top_p") is not None:
+        cl.user_session.set("top_p", settings["top_p"])
+    if settings.get("max_tokens") is not None:
+        cl.user_session.set("max_tokens", settings["max_tokens"])
 
 
 @cl.on_chat_resume
 async def on_chat_resume(thread: dict):
-    """Restaure une conversation passée."""
     thread_id = thread.get("id")
     cl.user_session.set("thread_id", thread_id)
 
-    if not DATA_LAYER_ENABLED:
-        await cl.Message(content=RESUME_NOT_AVAILABLE).send()
+    if not USE_DB:
+        await cl.Message(content="Reprise impossible sans PERSISTENCE=local.").send()
         return
 
-    full_thread = await cl.data_layer.get_thread(thread_id)
-
+    full = await cl.data_layer.get_thread(thread_id)
     interaction = [{"role": "system", "content": config.SYSTEM_PROMPT}]
-
-    if full_thread:
-        steps = full_thread.get("steps", [])
-        for step in steps:
-            step_type = step.get("type", "")
-            step_output = step.get("output", "")
-
-            if step_type == "user_message" and step_output:
-                interaction.append({"role": "user", "content": step_output})
-            elif step_type == "assistant_message" and step_output:
-                interaction.append({"role": "assistant", "content": step_output})
+    for step in (full or {}).get("steps", []):
+        out = step.get("output", "")
+        if step.get("type") == "user_message" and out:
+            interaction.append({"role": "user", "content": out})
+        elif step.get("type") == "assistant_message" and out:
+            interaction.append({"role": "assistant", "content": out})
 
     cl.user_session.set("interaction", interaction)
     cl.user_session.set("title_set", True)
+    cl.user_session.set("vision_model_used", False)
 
-    metadata = full_thread.get("metadata", {}) if full_thread else {}
-    if metadata.get("model"):
-        cl.user_session.set("model_name", metadata["model"])
-    if metadata.get("temperature"):
-        cl.user_session.set("temperature", metadata["temperature"])
-    if metadata.get("top_p"):
-        cl.user_session.set("top_p", metadata["top_p"])
-    if metadata.get("max_tokens"):
-        cl.user_session.set("max_tokens", metadata["max_tokens"])
+    meta = (full or {}).get("metadata", {})
+    if meta.get("model"):
+        cl.user_session.set("model_name", meta["model"])
+    if meta.get("temperature") is not None:
+        cl.user_session.set("temperature", meta["temperature"])
+    if meta.get("top_p") is not None:
+        cl.user_session.set("top_p", meta["top_p"])
+    if meta.get("max_tokens") is not None:
+        cl.user_session.set("max_tokens", meta["max_tokens"])
 
-    messages_count = len(interaction) - 1
-    await cl.Message(content=CONVERSATION_RESUMED.format(count=messages_count)).send()
+    models, default_label, idx = await _load_models(refresh=False)
+    saved = cl.user_session.get("model_name")
+    if saved in models:
+        idx = models.index(saved)
+
+    await _set_composer_commands()
+    await _send_settings(models, default_label, idx)
+    await cl.Message(content=f"Conversation reprise ({len(interaction) - 1} messages).").send()
 
 
 @cl.on_message
 async def main(message: cl.Message):
-    """
-    Point d'entrée principal pour traiter les messages utilisateur.
-
-    Gère les commandes slash (/model, /help, /clear, /history),
-    valide les fichiers uploadés (images, documents), appelle le LLM
-    via Ollama et sauvegarde les interactions dans la base de données.
-
-    Args:
-        message: Message reçu de l'utilisateur
-    """
     try:
-        if message.content and message.content.startswith("/model"):
-            parts = message.content.split(" ", 1)
-            if len(parts) == 1 or not parts[1].strip():
-                current = cl.user_session.get("model_name") or config.DEFAULT_MODEL
-                await cl.Message(content=MODEL_CURRENT.format(model=current)).send()
-                return
-            name = parts[1].strip()
-            cl.user_session.set("model_name", name)
-            await cl.Message(content=MODEL_SET.format(model=name)).send()
+        text = message.content or ""
+
+        if await _handle_command(text):
             return
 
-        if message.content and message.content.startswith("/help"):
-            await cl.Message(content=HELP).send()
-            return
+        await _maybe_set_thread_title(text)
 
-        if message.content and message.content.startswith("/history"):
-            await cl.Message(content=HISTORY).send()
-            return
+        tid = cl.user_session.get("thread_id")
+        await _save_step(tid, "user_message", text)
 
-        if message.content and message.content.startswith("/clear"):
-            cl.user_session.set(
-                "interaction", [{"role": "system", "content": config.SYSTEM_PROMPT}]
-            )
-            cl.user_session.set("title_set", False)
-            cl.user_session.set("welcome_message_sent", False)
-            await cl.Message(content=CONVERSATION_RESET).send()
-            return
-
-        if not cl.user_session.get("title_set"):
-            try:
-                title = message.content[: config.MAX_TITLE_LENGTH] + (
-                    "..." if len(message.content) > config.MAX_TITLE_LENGTH else ""
-                )
-                thread_id = cl.user_session.get("thread_id")
-
-                if thread_id and DATA_LAYER_ENABLED:
-                    await cl.data_layer.update_thread(
-                        thread_id,
-                        name=title,
-                        metadata={
-                            "model": cl.user_session.get("model_name"),
-                            "temperature": cl.user_session.get("temperature"),
-                            "top_p": cl.user_session.get("top_p"),
-                            "max_tokens": cl.user_session.get("max_tokens"),
-                        },
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"Impossible de mettre à jour le titre du thread: {type(e).__name__}: {e}"
-                )
-            cl.user_session.set("title_set", True)
-
-        thread_id = cl.user_session.get("thread_id")
-        await _create_step_safe(thread_id, "user_message", message.content, "Message utilisateur")
-
-        images, documents = [], []
+        images, documents, errors = [], [], []
         if message.elements:
             images, documents, errors = validate_uploaded_files(message.elements)
-
-            if config.DEBUG:
-                logger.debug(
-                    f"Fichiers: {len(images)} img, {len(documents)} doc, {len(errors)} err"
-                )
             if errors:
-                for error in errors:
-                    logger.warning(f"Erreur de validation: {error}")
-
-                error_msg = cl.Message(
-                    content="Erreurs de validation :\n" + "\n".join(f"- {e}" for e in errors)
-                )
-                await error_msg.send()
-
+                await cl.Message(content="Erreurs :\n" + "\n".join(f"- {e}" for e in errors)).send()
                 if not images and not documents:
                     return
 
-        if config.DEBUG:
-            mode = (
-                f"{len(images)} img"
-                if images
-                else f"{len(documents)} doc" if documents else "texte"
-            )
-            logger.debug(f"Traitement: {mode}")
-
         msg = cl.Message(content="")
-        file_paths = [f.path for f in images] + [f.path for f in documents]
+        interaction = _interaction()
+        params = _session_params()
+        web_on = message.command == WEB_COMMAND
 
-        interaction = cl.user_session.get("interaction")
-        if not interaction or not isinstance(interaction, list):
-            logger.error("[SESSION] Interaction invalide, réinitialisation")
-            interaction = [{"role": "system", "content": config.SYSTEM_PROMPT}]
-            cl.user_session.set("interaction", interaction)
-
-        params = _get_session_params()
-        model_name = params["model_name"]
-        temperature = params["temperature"]
-        top_p = params["top_p"]
-        max_tokens = params["max_tokens"]
-        model_just_changed = cl.user_session.get("model_just_changed", False)
-
-        async def stream_callback(token: str):
-            await msg.stream_token(token)
-
-        result = await process_llm_request(
-            input_message=message.content,
-            interaction=interaction,
-            model_name=model_name,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            files=file_paths if file_paths else None,
-            stream_callback=stream_callback,
-            model_just_changed=model_just_changed,
-        )
-
-        if model_just_changed:
-            cl.user_session.set("model_just_changed", False)
-
-        if result.get("has_images") and not cl.user_session.get("vision_model_used"):
-            model_used = result.get("model_used", model_name)
-            await cl.Message(content=VISION_MODEL_USED.format(model=model_used)).send()
-            cl.user_session.set("vision_model_used", True)
-
-        thread_id = cl.user_session.get("thread_id")
-        if result.get("error"):
-            error_content = (result.get("message") or {}).get("content") or ""
-            await cl.Message(content=error_content).send()
-            await _create_step_safe(
-                thread_id, "assistant_message", error_content, "Réponse assistant"
+        async def run_llm(flow_cb):
+            return await process_llm_request(
+                input_message=text,
+                interaction=interaction,
+                model_name=params["model_label"],
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                max_tokens=params["max_tokens"],
+                files=[f.path for f in documents] if documents else None,
+                image_paths=[f.path for f in images] if images else None,
+                web_search_enabled=web_on,
+                stream_callback=msg.stream_token,
+                flow_callback=flow_cb,
             )
+
+        if web_on:
+            result = await run_llm(WebFlowUI().handle)
         else:
-            await msg.send()
-            output = (result.get("message") or {}).get("content") or msg.content
-            await _create_step_safe(thread_id, "assistant_message", output, "Réponse assistant")
+            result = await run_llm(None)
+
+        await _reply(result, msg, tid, params)
 
     except Exception as e:
-        error_type = type(e).__name__
-        logger.error(f"Erreur dans main(): {error_type}: {e}", exc_info=True)
-        error_msg = cl.Message(content=ERROR_INTERNAL.format(error_type=error_type))
-        await error_msg.send()
+        logger.error(f"main: {e}", exc_info=True)
+        await cl.Message(content="Erreur interne. Réessaie.").send()
