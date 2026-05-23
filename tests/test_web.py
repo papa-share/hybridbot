@@ -1,5 +1,12 @@
 from chatbot.llm import _web_pool
-from chatbot.web import format_context, link_citations, normalize_response, sources_from_items, strip_sources_footer
+from chatbot.web import (
+    _exa_user_message,
+    format_context,
+    link_citations,
+    normalize_response,
+    sources_from_items,
+    strip_sources_footer,
+)
 
 
 class _Item:
@@ -8,6 +15,10 @@ class _Item:
         self.url = url
         self.highlights = highlights
         self.text = text
+
+
+def test_exa_user_message_timeout():
+    assert "délai" in _exa_user_message(TimeoutError()).lower()
 
 
 def test_format_context_numbered():

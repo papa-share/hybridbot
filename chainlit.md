@@ -47,13 +47,32 @@ Avec le web actif, le bot privilégie un modèle cloud compatible `tools`.
 
 **Réglages** (icône engrenage) : modèle, température, top P, tokens max.
 
-**Historique** : barre latérale. Requis : `DATABASE_URL` (PostgreSQL) et `AUTH_MODE=password` dans `.env`. Nouveau fil via le crayon en haut à gauche.
+**Historique** : barre latérale. Requis : `DATABASE_URL` (PostgreSQL) et `AUTH_MODE=password`. Connexion avec ton identifiant (compte créé via `make user-create`). Nouveau fil via le crayon en haut à gauche.
+
+**Comptes équipe** : chaque personne a son identifiant et mot de passe. Rôles `user` (défaut) ou `admin` (gestion future). Un admin gère les comptes en CLI — voir ci-dessous.
+
+**Partage** : menu ⋯ d'un fil → « Partager ». Le lien ouvre la conversation en **lecture seule** (`/share/{id}`). Désactive le partage depuis le même menu. Requis : historique + login (comme les favoris).
 
 **Favoris** : étoile sur tes messages → réutilisables depuis le composer (historique + login requis).
 
 **Pièces jointes** : PNG, JPG, PDF, Markdown, texte.
 
 **Globe** : recherche Exa. Active-le avant d'envoyer.
+
+## Administration (CLI, PostgreSQL)
+
+Réservé à qui déploie ou administre l'équipe :
+
+```bash
+make user-create USER=alice PASS=secret          # nouveau compte
+make user-list                                   # lister
+make user-disable USER=alice                     # bloquer la connexion
+make user-enable USER=alice
+make user-reset-pass USER=alice PASS=nouveau
+make user-set-role USER=alice ROLE=admin
+```
+
+Impossible de désactiver ou rétrograder le **dernier admin actif**.
 
 ## Limites
 
@@ -68,7 +87,9 @@ Avec le web actif, le bot privilégie un modèle cloud compatible `tools`.
 | `DEFAULT_WEB_MODEL` | Modèle prioritaire pour le web |
 | `EXA_API_KEY` | Recherche web |
 | `WEB_SEARCH_MAX_RESULTS` | Nombre de sources Exa (défaut 5) |
-| `DATABASE_URL` | PostgreSQL pour l'historique (`postgresql+asyncpg://...`) |
+| `DATABASE_URL` | PostgreSQL (`postgresql+asyncpg://...`) |
 | `AUTH_MODE` | `none` ou `password` |
+| `CHAINLIT_AUTH_SECRET` | Secret sessions (obligatoire si login + prod) |
+| `AUTH_PASSWORD` | Dev seulement : mot de passe partagé sans PostgreSQL |
 
 Prod : `.env.production`. Détail : `.env.example`.

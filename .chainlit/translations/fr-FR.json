@@ -140,9 +140,23 @@
             "untitled": "Conversation sans titre",
             "menu": {
                 "rename": "Renommer",
+                "share": "Partager",
                 "delete": "Supprimer"
             },
             "actions": {
+                "share": {
+                    "title": "Partager le lien du chat",
+                    "button": "Partager",
+                    "status": {
+                        "copied": "Lien copié",
+                        "created": "Lien de partage créé",
+                        "unshared": "Partage désactivé pour ce fil"
+                    },
+                    "error": {
+                        "create": "Impossible de créer le lien",
+                        "unshare": "Impossible de désactiver le partage"
+                    }
+                },
                 "delete": {
                     "title": "Confirmer la suppression",
                     "description": "Cela supprimera le fil ainsi que ses messages et éléments. Cette action ne peut pas être annulée",

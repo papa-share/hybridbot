@@ -1,4 +1,4 @@
-from chatbot.persistence import _step_dict_from_row, default_chat_prefs
+from chatbot.persistence import _step_dict_from_row, default_chat_prefs, thread_is_shared
 
 
 def test_default_chat_prefs():
@@ -37,3 +37,10 @@ def test_step_dict_from_row_not_favorite():
         "step_output": "Bonjour",
     }
     assert _step_dict_from_row(row) is None
+
+
+def test_thread_is_shared():
+    assert thread_is_shared({"metadata": {"is_shared": True}})
+    assert not thread_is_shared({"metadata": {"is_shared": False}})
+    assert not thread_is_shared({"metadata": "{}"})
+    assert thread_is_shared({"metadata": '{"is_shared": true}'})

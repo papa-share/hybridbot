@@ -24,8 +24,7 @@ def test_production_requires_secrets(monkeypatch):
         validate_config()
 
     monkeypatch.setattr(config, "CHAINLIT_AUTH_SECRET", "secret-test")
-    with pytest.raises(ValueError, match="AUTH_PASSWORD"):
-        validate_config()
+    validate_config()
 
 
 def test_invalid_auth_mode(monkeypatch):

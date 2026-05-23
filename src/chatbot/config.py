@@ -88,8 +88,8 @@ def validate_config() -> None:
             )
         if config.AUTH_MODE != "password":
             raise ValueError("AUTH_MODE=password obligatoire en production")
-        if not config.AUTH_PASSWORD:
-            raise ValueError("AUTH_PASSWORD requis en production")
+        if not config.DATABASE_URL and not config.AUTH_PASSWORD:
+            raise ValueError("DATABASE_URL ou AUTH_PASSWORD requis en production")
 
 
 validate_config()

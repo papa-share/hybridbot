@@ -118,6 +118,45 @@ def strip_sources_footer(text: str) -> str:
     return text
 
 
+def _error_detail(exc: Exception) -> str:
+    msg = str(exc).strip()
+    if msg:
+        return msg
+    return f"{type(exc).__name__}"
+
+
+def _exa_user_message(exc: Exception) -> str:
+    detail = _error_detail(exc).lower()
+    if isinstance(exc, TimeoutError):
+        return "Exa ne répond pas (délai dépassé). Réessaie."
+    if isinstance(exc, OSError):
+        return "Connexion Exa impossible. Vérifie ta connexion internet."
+    if "401" in detail or "api key" in detail or "unauthorized" in detail:
+        return "Clé Exa invalide. Vérifie EXA_API_KEY dans .env."
+    if "429" in detail or "rate limit" in detail:
+        return "Quota Exa dépassé. Réessaie plus tard."
+    return f"Recherche web impossible : {_error_detail(exc)}"
+
+
+async def _emit_sources(items, on_event: FlowEvent | None) -> list[dict[str, str]]:
+    sources = sources_from_items(items)
+    total = len(items)
+    for i, item in enumerate(items, 1):
+        title = _exa_attr(item, "title", "Sans titre")
+        url = _exa_attr(item, "url")
+        try:
+            await emit_flow(on_event, "source", index=i, total=total, title=title, url=url)
+        except Exception as exc:
+            logger.warning(f"exa ui source: {_error_detail(exc)}")
+        if i < total:
+            await asyncio.sleep(SOURCE_STAGGER_S)
+    try:
+        await emit_flow(on_event, "sources_done", count=total)
+    except Exception as exc:
+        logger.warning(f"exa ui done: {_error_detail(exc)}")
+    return sources
+
+
 async def emit_flow(on_event: FlowEvent | None, kind: str, **data: Any) -> None:
     if not on_event:
         return
@@ -137,7 +176,10 @@ async def search_web(
         return "Clé Exa manquante : ajoute EXA_API_KEY dans .env.", False, []
 
     preview = q if len(q) <= 120 else f"{q[:117]}..."
-    await emit_flow(on_event, "searching", query=preview)
+    try:
+        await emit_flow(on_event, "searching", query=preview)
+    except Exception as exc:
+        logger.warning(f"exa ui search: {_error_detail(exc)}")
 
     try:
         response = await _client().search(
@@ -146,28 +188,18 @@ async def search_web(
             type="auto",
             contents={"highlights": True},
         )
-        items = getattr(response, "results", None) or []
-        if not items:
-            await emit_flow(on_event, "empty")
-            return "Aucun résultat web.", True, []
+    except Exception as exc:
+        logger.error(f"exa search: {_error_detail(exc)}")
+        try:
+            await emit_flow(on_event, "error", message=_exa_user_message(exc))
+        except Exception as ui_exc:
+            logger.warning(f"exa ui error: {_error_detail(ui_exc)}")
+        return _exa_user_message(exc), False, []
 
-        sources = sources_from_items(items)
-        total = len(items)
-        for i, item in enumerate(items, 1):
-            title = _exa_attr(item, "title", "Sans titre")
-            url = _exa_attr(item, "url")
-            await emit_flow(on_event, "source", index=i, total=total, title=title, url=url)
-            if i < total:
-                await asyncio.sleep(SOURCE_STAGGER_S)
+    items = getattr(response, "results", None) or []
+    if not items:
+        await emit_flow(on_event, "empty")
+        return "Aucun résultat web.", True, []
 
-        await emit_flow(on_event, "sources_done", count=total)
-        return format_context(items), True, sources
-    except Exception as e:
-        logger.error(f"exa search: {e}")
-        raw = str(e).lower()
-        await emit_flow(on_event, "error", message=str(e))
-        if "401" in raw or "api key" in raw or "unauthorized" in raw:
-            return "Clé Exa invalide. Vérifie EXA_API_KEY dans .env.", False, []
-        if "429" in raw or "rate limit" in raw:
-            return "Quota Exa dépassé. Réessaie plus tard.", False, []
-        return f"Recherche web impossible : {e}", False, []
+    sources = await _emit_sources(items, on_event)
+    return format_context(items), True, sources

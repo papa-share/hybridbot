@@ -96,6 +96,16 @@ class PostgresDataLayer(SQLAlchemyDataLayer):
         return steps
 
 
+def thread_is_shared(thread: dict[str, Any]) -> bool:
+    raw = thread.get("metadata") or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return False
+    return isinstance(raw, dict) and bool(raw.get("is_shared"))
+
+
 if config.DATABASE_URL:
 
     @cl.data_layer

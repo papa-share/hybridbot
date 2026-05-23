@@ -10,7 +10,13 @@ from ollama import AsyncClient
 
 from chatbot.config import DOCUMENT_EXTENSIONS, config, logger
 from chatbot.validators import validate_image_path
-from chatbot.web import emit_flow, link_citations, normalize_response, search_web, strip_sources_footer
+from chatbot.web import (
+    emit_flow,
+    link_citations,
+    normalize_response,
+    search_web,
+    strip_sources_footer,
+)
 
 try:
     from pypdf import PdfReader

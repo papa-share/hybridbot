@@ -10,15 +10,7 @@ import chainlit as cl
 from chainlit.input_widget import Select, Slider
 
 import chatbot.persistence  # noqa: F401
-from chatbot.persistence import (
-    apply_chat_prefs,
-    load_chat_prefs,
-    prefs_from_settings,
-    save_chat_prefs,
-)
 from chatbot.config import (
-    DEFAULT_USER_ID,
-    DEFAULT_USER_NAME,
     TEMPERATURE_STEP,
     TOP_P_STEP,
     config,
@@ -30,6 +22,13 @@ from chatbot.llm import (
     label_for_model,
     model_from_label,
     process_llm_request,
+)
+from chatbot.persistence import (
+    apply_chat_prefs,
+    load_chat_prefs,
+    prefs_from_settings,
+    save_chat_prefs,
+    thread_is_shared,
 )
 from chatbot.validators import validate_uploaded_files
 from chatbot.web_flow import WebFlowUI
@@ -65,12 +64,15 @@ if config.AUTH_MODE == "password":
 
     @cl.password_auth_callback
     async def auth_callback(username: str, password: str) -> cl.User | None:
-        if config.AUTH_PASSWORD and password != config.AUTH_PASSWORD:
-            return None
+        from chatbot.auth import authenticate
 
-        user_id = username or DEFAULT_USER_ID
-        user_name = username or DEFAULT_USER_NAME
-        return cl.User(identifier=user_id, metadata={"role": "user", "name": user_name})
+        return await authenticate(username, password)
+
+
+@cl.on_shared_thread_view
+async def on_shared_thread_view(thread: dict, viewer: cl.User | None):
+    del viewer
+    return thread_is_shared(thread)
 
 
 def _session_params() -> dict[str, Any]:
@@ -147,7 +149,9 @@ async def _send_settings(models: list[str], prefs: dict[str, Any], idx: int) -> 
     ).send()
 
 
-async def _prepare_settings(*, refresh_models: bool, use_user_store: bool) -> tuple[list[str], dict[str, Any], int]:
+async def _prepare_settings(
+    *, refresh_models: bool, use_user_store: bool
+) -> tuple[list[str], dict[str, Any], int]:
     models, default_label, default_idx = await _load_models(refresh=refresh_models)
     prefs = await load_chat_prefs(default_label, use_user_store=use_user_store)
     if prefs["model"] not in models:

@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: help install install-dev run run-watch test test-cov lint lint-fix format format-check typecheck deadcode check clean db-up db-init db-down
+.PHONY: help install install-dev run run-watch test test-cov lint lint-fix format format-check typecheck deadcode check clean db-up db-init db-down user-create user-list user-disable user-enable user-reset-pass user-set-role
 
 help:
 	@echo "Commandes disponibles:"
@@ -10,6 +10,12 @@ help:
 	@echo "  make db-up        - PostgreSQL local (docker compose)"
 	@echo "  make db-init      - Creer le schema Chainlit"
 	@echo "  make db-down      - Arreter PostgreSQL"
+	@echo "  make user-create  - Creer un compte (USER=, PASS=, ROLE=user|admin)"
+	@echo "  make user-list    - Lister les comptes"
+	@echo "  make user-disable - Desactiver un compte (USER=)"
+	@echo "  make user-enable  - Reactiver un compte (USER=)"
+	@echo "  make user-reset-pass - Changer le mot de passe (USER=, PASS=)"
+	@echo "  make user-set-role   - Changer le role (USER=, ROLE=user|admin)"
 	@echo "  make test         - Tests"
 	@echo "  make test-cov     - Tests avec couverture"
 	@echo "  make lint         - ruff check"
@@ -38,6 +44,24 @@ db-init: db-up
 
 db-down:
 	docker compose down
+
+user-create:
+	$(UV) run python scripts/manage_user.py create "$(USER)" --password "$(PASS)" --role "$(or $(ROLE),user)"
+
+user-list:
+	$(UV) run python scripts/manage_user.py list
+
+user-disable:
+	$(UV) run python scripts/manage_user.py disable "$(USER)"
+
+user-enable:
+	$(UV) run python scripts/manage_user.py enable "$(USER)"
+
+user-reset-pass:
+	$(UV) run python scripts/manage_user.py reset-password "$(USER)" --password "$(PASS)"
+
+user-set-role:
+	$(UV) run python scripts/manage_user.py set-role "$(USER)" --role "$(ROLE)"
 
 test:
 	$(UV) run python -m pytest tests/ -v

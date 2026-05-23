@@ -7,6 +7,15 @@ CREATE TABLE IF NOT EXISTS users (
     "createdAt" TEXT
 );
 
+CREATE TABLE IF NOT EXISTS accounts (
+    identifier TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    active BOOLEAN NOT NULL DEFAULT true,
+    display_name TEXT,
+    "createdAt" TEXT
+);
+
 CREATE TABLE IF NOT EXISTS threads (
     "id" UUID PRIMARY KEY,
     "createdAt" TEXT,
