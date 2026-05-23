@@ -21,8 +21,8 @@
             "title": "Connectez-vous pour accéder à l'application",
             "form": {
                 "email": {
-                    "label": "Adresse e-mail",
-                    "required": "L'e-mail est un champ obligatoire"
+                    "label": "Identifiant",
+                    "required": "L'identifiant est obligatoire"
                 },
                 "password": {
                     "label": "Mot de passe",
@@ -174,7 +174,7 @@
             "button": "Nouveau chat",
             "dialog": {
                 "title": "Créer un nouveau chat",
-                "description": "Cela effacera votre historique de chat actuel. Êtes-vous sûr de vouloir continuer ?",
+                "description": "Un nouveau fil sera créé. L'historique reste accessible dans la barre latérale.",
                 "tooltip": "Nouveau chat"
             }
         },

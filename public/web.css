@@ -1,30 +1,154 @@
-/* Masquer le libelle Web a cote du globe */
+/* Masquer le libelle Web a cote du globe (composer) */
 #command-Web .flex.items-center > span {
   display: none;
 }
 
-/* Accueil centre tant qu'il n'y a pas de message utilisateur */
-body:not(:has([data-step-type="user_message"])) .relative.flex.flex-col.flex-grow.overflow-y-auto > .flex.flex-col.flex-grow.overflow-y-auto {
-  justify-content: center;
-}
-
-body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] .ai-message {
-  justify-content: center;
-  width: auto;
-  max-width: 32rem;
-}
-
-body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_message"] .ai-message > .flex.flex-col.items-start {
+/* Badge Web -> icone globe dans les messages */
+.command-span {
+  font-size: 0;
+  line-height: 1;
+  display: inline-flex;
   align-items: center;
-  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.command-span::before {
+  content: "";
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-color: #08f;
+  -webkit-mask: url("/public/starters/globe.svg") center / contain no-repeat;
+  mask: url("/public/starters/globe.svg") center / contain no-repeat;
+}
+
+#welcome-screen {
+  flex: 1 1 auto !important;
+  width: 100%;
+  max-width: 52rem;
+  min-height: calc(100dvh - 11rem);
+  margin-top: 0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0 0.5rem 1.25rem;
+}
+
+#welcome-screen::before {
+  display: none;
+}
+
+#welcome-screen > :nth-child(1) {
+  order: 0;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-bottom: 1.25rem;
+}
+
+#welcome-screen > :nth-child(1) .logo {
+  height: 5rem;
+  width: auto;
+  max-width: min(12rem, 40vw);
+  border-radius: 0.75rem;
+  object-fit: contain;
+}
+
+#starters {
+  order: 1;
+  flex: 1 1 auto;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+#welcome-screen > :nth-child(2) {
+  order: 2;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+}
+
+#starters button {
+  width: 100%;
+  height: auto;
+  min-height: 5.5rem;
+  border-radius: 0.875rem;
+  padding: 0.875rem 1rem;
+  justify-content: flex-start;
+  white-space: normal;
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+#starters button:hover {
+  transform: translateY(-1px);
+}
+
+#starters button > div {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+#starters button > div::before {
+  content: "";
+  display: block;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  background-color: var(--starter-color);
+  -webkit-mask: var(--starter-mask) center / contain no-repeat;
+  mask: var(--starter-mask) center / contain no-repeat;
+}
+
+#starters button:nth-child(1) {
+  --starter-color: #38bdf8;
+  --starter-mask: url("/public/starters/globe.svg");
+}
+
+#starters button:nth-child(2) {
+  --starter-color: #f97316;
+  --starter-mask: url("/public/starters/file-text.svg");
+}
+
+#starters button:nth-child(3) {
+  --starter-color: #2dd4bf;
+  --starter-mask: url("/public/starters/code.svg");
+}
+
+#starters button:nth-child(4) {
+  --starter-color: #a78bfa;
+  --starter-mask: url("/public/starters/image.svg");
+}
+
+#starters p {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+  color: inherit;
+}
+
+@media (max-width: 900px) {
+  #welcome-screen {
+    min-height: calc(100dvh - 10rem);
+    padding-bottom: 1rem;
+  }
+
+  #starters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  #starters {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* TaskList recherche web */
@@ -52,18 +176,22 @@ body:not(:has([data-step-type="user_message"])) [data-step-type="assistant_messa
   }
 }
 
-/* Citations [1] cliquables */
+/* Citations [1] cliquables dans les reponses web */
 .ai-message .markdown-body a[href^="http"],
-.ai-message .prose a[href^="http"] {
+.ai-message .prose a[href^="http"],
+.ai-message a[href^="http"] {
   font-size: 0.75rem;
   font-weight: 600;
   vertical-align: super;
   text-decoration: none;
-  opacity: 0.8;
+  opacity: 0.85;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .ai-message .markdown-body a[href^="http"]:hover,
-.ai-message .prose a[href^="http"]:hover {
+.ai-message .prose a[href^="http"]:hover,
+.ai-message a[href^="http"]:hover {
   text-decoration: underline;
   opacity: 1;
 }

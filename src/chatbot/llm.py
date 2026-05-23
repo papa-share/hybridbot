@@ -10,7 +10,7 @@ from ollama import AsyncClient
 
 from chatbot.config import DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, config, logger
 from chatbot.validators import validate_image_path
-from chatbot.web import link_citations, search_web
+from chatbot.web import emit_flow, link_citations, normalize_response, search_web, strip_sources_footer
 
 try:
     from pypdf import PdfReader
@@ -265,14 +265,6 @@ async def is_vision_model(model_id: str) -> bool:
     return model_id in catalog["vision_cloud"] or model_id in catalog["vision_local"]
 
 
-async def _flow(cb: Callable[[str, dict[str, Any]], Any] | None, kind: str, **data: Any) -> None:
-    if not cb:
-        return
-    result = cb(kind, data)
-    if asyncio.iscoroutine(result):
-        await result
-
-
 async def process_llm_request(
     input_message: str,
     interaction: list[dict[str, Any]],
@@ -288,15 +280,7 @@ async def process_llm_request(
 ) -> dict[str, Any]:
     selected = model_from_label(model_name)
     images = list(image_paths or [])
-    documents: list[str] = []
-
-    if files:
-        for path in files:
-            low = path.lower()
-            if not images and low.endswith(IMAGE_EXTENSIONS):
-                images.append(path)
-            elif low.endswith(DOCUMENT_EXTENSIONS):
-                documents.append(path)
+    documents = list(files or [])
 
     content = input_message
     if documents:
@@ -345,7 +329,7 @@ async def process_llm_request(
         models_to_try = [selected]
 
     if auto_web:
-        await _flow(flow_callback, "model", name=models_to_try[0])
+        await emit_flow(flow_callback, "model", name=models_to_try[0])
 
     num_ctx = config.WEB_SEARCH_NUM_CTX if web_used else config.DEFAULT_NUM_CTX
 
@@ -361,7 +345,7 @@ async def process_llm_request(
         except Exception as e:
             return {"message": {"content": f"Erreur images: {e}"}, "error": True}
 
-    await _flow(flow_callback, "generating")
+    await emit_flow(flow_callback, "generating")
 
     full_content = ""
     last_chunk = None
@@ -389,7 +373,7 @@ async def process_llm_request(
             last_error = e
             if auto_switch and _retryable_model_error(e) and i < len(models_to_try) - 1:
                 logger.info(f"{model} indisponible, essai suivant")
-                await _flow(flow_callback, "retry", name=models_to_try[i + 1])
+                await emit_flow(flow_callback, "retry", name=models_to_try[i + 1])
                 continue
             logger.error(f"Ollama: {e}")
             return {"message": {"content": _ollama_error(e, model)}, "error": True}
@@ -398,11 +382,12 @@ async def process_llm_request(
             logger.error(f"Ollama: {last_error}")
             return {"message": {"content": _ollama_error(last_error, selected)}, "error": True}
 
-    text = (full_content or "").strip()
+    text = normalize_response(full_content or "")
     if not text:
         return {"message": {"content": "Pas de réponse."}, "error": True}
 
     if web_sources:
+        text = strip_sources_footer(text)
         text = link_citations(text, web_sources)
 
     truncated = (last_chunk or {}).get("done_reason") == "length"
@@ -413,13 +398,11 @@ async def process_llm_request(
             await stream_callback(suffix)
 
     interaction.append({"role": "assistant", "content": text})
-    await _flow(flow_callback, "done")
+    await emit_flow(flow_callback, "done")
     return {
         "message": {"content": text},
         "model_used": selected,
         "has_images": bool(images),
-        "web_used": web_used,
-        "web_sources": web_sources if web_used else None,
     }
 
 

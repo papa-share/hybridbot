@@ -1,10 +1,8 @@
 [project]
-enable_telemetry = false
 user_env = []
 session_timeout = 3600
 user_session_timeout = 1296000
 cache = true
-persist_user_session = true
 allow_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
 [features]
@@ -13,10 +11,10 @@ latex = false
 auto_tag_thread = true
 edit_message = true
 
-# Limites UI, alignees sur MAX_* dans .env
+# max_files / max_size_mb = limite UI ; re-validation serveur via MAX_* dans .env
 [features.spontaneous_file_upload]
 enabled = true
-accept = ["image/*", "application/pdf", "text/markdown", "text/plain"]
+accept = { "image/*" = [], "application/pdf" = [], "text/markdown" = [], "text/plain" = [] }
 max_files = 5
 max_size_mb = 50
 
@@ -24,8 +22,10 @@ max_size_mb = 50
 name = "OllamaHybridBot"
 language = "fr-FR"
 cot = "full"
-custom_css = "/public/web.css"
+logo_file_url = "/public/logo_pbn.png"
 custom_meta_image_url = "/public/papa_pro.jfif"
+custom_css = "/public/web.css"
+custom_js = "/public/readme.js"
 show_chainlit_footer = true
 
 [[UI.header_links]]

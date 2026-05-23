@@ -16,7 +16,9 @@ dependencies = [
     "ollama>=0.6.0",
     "pypdf>=5.0.0",
     "python-dotenv>=1.0.0",
-    "aiosqlite>=0.19.0",
+    "asyncpg>=0.29.0",
+    "SQLAlchemy>=2.0.0",
+    "greenlet>=3.0.0",
     "aiofiles>=23.0.0",
     "exa-py>=2.13.0",
 ]
@@ -26,7 +28,8 @@ dev = [
     "ruff>=0.1.0",
     "black>=23.0.0",
     "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+    "pyright>=1.1.0",
+    "vulture>=2.11",
 ]
 
 [tool.setuptools.packages.find]
@@ -53,8 +56,6 @@ target-version = ["py310"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "ignore:Support for class-based `config` is deprecated:DeprecationWarning:traceloop.sdk.prompts.model",
 ]

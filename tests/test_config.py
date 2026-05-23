@@ -12,9 +12,14 @@ def test_config_loads():
 def test_production_requires_secrets(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("CHAINLIT_AUTH_SECRET", raising=False)
     monkeypatch.delenv("AUTH_PASSWORD", raising=False)
 
+    with pytest.raises(ValueError, match="DATABASE_URL"):
+        validate_config()
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
     with pytest.raises(ValueError, match="CHAINLIT_AUTH_SECRET"):
         validate_config()
 

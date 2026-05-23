@@ -43,23 +43,15 @@ Embeddings, OCR, whisper et rerankers sont filtrés : seuls les modèles de chat
 
 Avec le web actif, le bot privilégie un modèle cloud compatible `tools`.
 
-## Commandes
-
-| Commande | Effet |
-| --- | --- |
-| `/model <nom>` | Affiche ou change le modèle |
-| `/clear` | Efface la conversation en cours |
-| `/history` | Où retrouver les anciens fils |
-
-Historique des fils : `PERSISTENCE=local` et `AUTH_MODE=password` dans `.env`.
-
 ## Interface
+
+**Réglages** (icône engrenage) : modèle, température, top P, tokens max.
+
+**Historique** : barre latérale. Requis : `DATABASE_URL` (PostgreSQL) et `AUTH_MODE=password` dans `.env`. Nouveau fil via le crayon en haut à gauche.
 
 **Pièces jointes** : PNG, JPG, PDF, Markdown, texte.
 
 **Globe** : recherche Exa. Active-le avant d'envoyer.
-
-**Réglages** : modèle, température, top P, tokens max.
 
 ## Limites
 
@@ -74,7 +66,7 @@ Historique des fils : `PERSISTENCE=local` et `AUTH_MODE=password` dans `.env`.
 | `DEFAULT_WEB_MODEL` | Modèle prioritaire pour le web |
 | `EXA_API_KEY` | Recherche web |
 | `WEB_SEARCH_MAX_RESULTS` | Nombre de sources Exa (défaut 5) |
-| `PERSISTENCE` | `none` ou `local` (SQLite) |
+| `DATABASE_URL` | PostgreSQL pour l'historique (`postgresql+asyncpg://...`) |
 | `AUTH_MODE` | `none` ou `password` |
 
 Prod : `.env.production`. Détail : `.env.example`.

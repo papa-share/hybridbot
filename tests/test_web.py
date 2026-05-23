@@ -1,5 +1,5 @@
 from chatbot.llm import _web_pool
-from chatbot.web import format_context, format_results, link_citations, sources_from_items
+from chatbot.web import format_context, link_citations, normalize_response, sources_from_items, strip_sources_footer
 
 
 class _Item:
@@ -10,22 +10,17 @@ class _Item:
         self.text = text
 
 
-def test_format_results():
-    out = format_results(
-        [
-            _Item("Titre", "https://exa.ai", highlights=["extrait utile"]),
-        ]
-    )
+def test_format_context_numbered():
+    out = format_context([_Item("Le Monde", "https://lemonde.fr")])
+    assert out.startswith("Contexte web")
+    assert "[1] Le Monde" in out
+
+
+def test_format_context_highlights():
+    out = format_context([_Item("Titre", "https://exa.ai", highlights=["extrait utile"])])
     assert "[1]" in out
     assert "https://exa.ai" in out
     assert "extrait utile" in out
-    assert "cite" in out.lower() or "Cite" in out
-
-
-def test_format_context_numbered():
-    out = format_context([_Item("Le Monde", "https://lemonde.fr")])
-    assert out.startswith("Sources web")
-    assert "[1] Le Monde" in out
 
 
 def test_sources_from_items():
@@ -42,13 +37,40 @@ def test_link_citations():
         {"index": "2", "title": "B", "url": "https://b.com"},
     ]
     out = link_citations("D'après [1], confirmé par [2].", sources)
-    assert out == "D'après [[1]](https://a.com), confirmé par [[2]](https://b.com)."
+    assert out == "D'après [1](https://a.com), confirmé par [2](https://b.com)."
+
+
+def test_link_citations_bare_and_source():
+    sources = [{"index": "1", "title": "A", "url": "https://a.com"}]
+    assert link_citations("Voir [[1]] et (source 1).", sources) == (
+        "Voir [1](https://a.com) et [1](https://a.com)."
+    )
+
+
+def test_link_citations_dagger():
+    sources = [{"index": "1", "title": "A", "url": "https://a.com"}]
+    text = "Info [1†L-Iran-accuse-les-Etats-Unis] fin."
+    assert link_citations(text, sources) == "Info [1](https://a.com) fin."
 
 
 def test_link_citations_skips_linked():
     sources = [{"index": "1", "title": "A", "url": "https://a.com"}]
-    text = "Voir [[1]](https://a.com) déjà lié."
+    text = "Voir [1](https://a.com) déjà lié."
     assert link_citations(text, sources) == text
+
+
+def test_normalize_response():
+    assert normalize_response("Ligne<br/>suite<p>fin</p>") == "Ligne\nsuite\nfin"
+
+
+def test_strip_sources_footer():
+    body = "Point [1] et [2].\n\n**Sources :**\n1. A — lien\n2. B — lien"
+    assert strip_sources_footer(body) == "Point [1] et [2]."
+
+
+def test_strip_sources_footer_keeps_body():
+    text = "Réponse sans liste."
+    assert strip_sources_footer(text) == text
 
 
 def test_web_pool_cloud_chat_first():

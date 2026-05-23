@@ -36,8 +36,6 @@ htmlcov/
 .pyright/
 
 # Projet
-chainlit.db
-*.db
 .files/
 tmp/
 docs/

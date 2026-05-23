@@ -8,7 +8,6 @@ load_dotenv()
 
 DEFAULT_USER_ID = "local_user"
 DEFAULT_USER_NAME = "Utilisateur"
-DEFAULT_THREAD_NAME = "Nouvelle conversation"
 TEMPERATURE_STEP = 0.1
 TOP_P_STEP = 0.05
 
@@ -38,12 +37,12 @@ class Config:
 
     AUTH_MODE = os.getenv("AUTH_MODE", "none").strip().lower()
     AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "")
-    PERSISTENCE = os.getenv("PERSISTENCE", "none").strip().lower()
+    DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
     DEBUG = _env_bool("DEBUG", default=ENV != "production")
 
-    MAX_IMAGE_SIZE_MB = int(os.getenv("MAX_IMAGE_SIZE_MB", "20"))
+    MAX_IMAGE_SIZE_MB = int(os.getenv("MAX_IMAGE_SIZE_MB", "50"))
     MAX_DOCUMENT_SIZE_MB = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "2"))
-    MAX_FILES = int(os.getenv("MAX_FILES", "3"))
+    MAX_FILES = int(os.getenv("MAX_FILES", "5"))
 
     OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
     OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -70,9 +69,6 @@ class Config:
     DEFAULT_NUM_CTX = int(os.getenv("DEFAULT_NUM_CTX", "8192"))
     MAX_CONTEXT_MESSAGES = int(os.getenv("MAX_CONTEXT_MESSAGES", "20"))
 
-    MAX_TITLE_LENGTH = 50
-    DB_PATH = os.getenv("DB_PATH", "./chainlit.db")
-
     SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "Réponds en français, court et factuel.")
 
 
@@ -81,17 +77,19 @@ config = Config()
 
 def validate_config() -> None:
     auth_mode = os.getenv("AUTH_MODE", "none").strip().lower()
-    persistence = os.getenv("PERSISTENCE", "none").strip().lower()
+    database_url = os.getenv("DATABASE_URL", "").strip()
     env = os.getenv("ENV", "development").strip().lower()
 
     if auth_mode not in {"none", "password"}:
         raise ValueError("AUTH_MODE doit être 'none' ou 'password'")
-    if persistence not in {"none", "local"}:
-        raise ValueError("PERSISTENCE doit être 'none' ou 'local'")
 
     if env == "production":
+        if not database_url:
+            raise ValueError("DATABASE_URL requis en production")
         if not os.getenv("CHAINLIT_AUTH_SECRET"):
-            raise ValueError("CHAINLIT_AUTH_SECRET requis en production (chainlit create-secret)")
+            raise ValueError(
+                "CHAINLIT_AUTH_SECRET requis en production (uv run python -m chainlit create-secret)"
+            )
         if auth_mode != "password":
             raise ValueError("AUTH_MODE=password obligatoire en production")
         if not os.getenv("AUTH_PASSWORD"):
