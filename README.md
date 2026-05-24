@@ -56,41 +56,33 @@ Connexion, page d'accueil avec starters, réglages, recherche web (Tasks + citat
 Traitement d'un message (`app.py` → `llm.process_llm_request`).
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 65, "padding": 22}, "themeVariables": {"fontSize": "20px"}}}%%
+%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 70, "padding": 30}, "themeVariables": {"fontSize": "22px"}}}%%
 flowchart LR
     subgraph b1 ["B1 · Entree (1-3)"]
-        direction TB
-        e1["1 · Message"]
-        e2["2 · Validation uploads"]
-        e3["3 · Flow handler"]
-        e1 --> e2 --> e3
+        direction LR
+        e1["1 · Message"] --> e2["2 · Validation uploads"] --> e3["3 · Flow handler"]
     end
-
     subgraph b2 ["B2 · Enrichissement (4-6)"]
-        direction TB
-        e4["4 · Extraction PDF / texte"]
-        e5["5 · Exa + contexte"]
-        e6["6 · Prompt enrichi"]
-        e4 --> e5 --> e6
+        direction LR
+        e4["4 · Extraction PDF / texte"] --> e5["5 · Exa + contexte"] --> e6["6 · Prompt enrichi"]
     end
+    e3 --> e4
+```
 
+**6 → 7**
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 70, "padding": 30}, "themeVariables": {"fontSize": "22px"}}}%%
+flowchart LR
     subgraph b3 ["B3 · Inference (7-8)"]
-        direction TB
-        e7["7 · Modele + contexte + images"]
-        e8["8 · Stream Ollama"]
-        e7 --> e8
+        direction LR
+        e7["7 · Modele + contexte + images"] --> e8["8 · Stream Ollama"]
         e8 -->|echec retryable| e8
     end
-
     subgraph b4 ["B4 · Sortie (9-10)"]
-        direction TB
-        e9["9 · Post-traitement"]
-        e10["10 · Reponse finale"]
-        e9 --> e10
+        direction LR
+        e9["9 · Post-traitement"] --> e10["10 · Reponse finale"]
     end
-
-    e3 --> e4
-    e6 --> e7
     e8 --> e9
 ```
 

@@ -90,12 +90,6 @@ def _format_context_rows(rows: list[dict[str, str]]) -> str:
     return "\n".join(lines).strip()
 
 
-def format_context(items) -> str:
-    if not items:
-        return "Aucun résultat web."
-    return _format_context_rows(_source_rows(items))
-
-
 def link_citations(text: str, sources: list[dict[str, str]]) -> str:
     if not text or not sources:
         return text

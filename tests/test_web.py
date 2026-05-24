@@ -1,7 +1,8 @@
 from chatbot.llm import _web_pool
 from chatbot.web import (
     _exa_user_message,
-    format_context,
+    _format_context_rows,
+    _source_rows,
     link_citations,
     normalize_response,
     sources_from_items,
@@ -22,13 +23,15 @@ def test_exa_user_message_timeout():
 
 
 def test_format_context_numbered():
-    out = format_context([_Item("Le Monde", "https://lemonde.fr")])
+    rows = _source_rows([_Item("Le Monde", "https://lemonde.fr")])
+    out = _format_context_rows(rows)
     assert out.startswith("Contexte web")
     assert "[1] Le Monde" in out
 
 
 def test_format_context_highlights():
-    out = format_context([_Item("Titre", "https://exa.ai", highlights=["extrait utile"])])
+    rows = _source_rows([_Item("Titre", "https://exa.ai", highlights=["extrait utile"])])
+    out = _format_context_rows(rows)
     assert "[1]" in out
     assert "https://exa.ai" in out
     assert "extrait utile" in out
