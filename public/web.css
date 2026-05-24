@@ -153,7 +153,7 @@
 
 /* TaskList recherche web */
 [data-testid="tasklist"] a {
-  color: var(--primary, #d946ef);
+  color: hsl(var(--primary));
   text-decoration: underline;
   word-break: break-all;
 }
@@ -202,7 +202,129 @@
   opacity: 0.8;
 }
 
-.step[data-step-type="user_message"] .favorite-message.text-yellow-500,
-.step[data-step-type="user_message"] .favorite-message:hover {
-  opacity: 1;
+@keyframes chat-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Curseur de génération chat : roue (comme Tasks), pas le point pulse */
+span.inline-block.h-3\.5.w-3\.5.bg-foreground.rounded-full.animate-pulse {
+  width: 1rem !important;
+  height: 1rem !important;
+  margin-left: 0.25rem;
+  border-radius: 9999px !important;
+  background: transparent !important;
+  border: 2px solid hsl(var(--primary) / 0.25);
+  border-top-color: hsl(var(--primary)) !important;
+  animation: chat-loader-spin 0.8s linear infinite !important;
+}
+
+/* Marque PBN : #070318 uniquement sur boutons d'action + avatar (pas sliders, liens, etc.) */
+:root {
+  --pbn-brand: #070318;
+  --loading-cursor-size: 1rem;
+  --loading-cursor-color: hsl(var(--primary));
+  --loading-cursor-animation: chat-loader-spin 0.8s linear infinite;
+}
+
+#user-nav-button .bg-primary,
+#confirm,
+button.bg-primary[type="submit"] {
+  background-color: var(--pbn-brand) !important;
+  color: #f8f7fc !important;
+  border-color: var(--pbn-brand) !important;
+}
+
+#user-nav-button .bg-primary:hover,
+#confirm:hover,
+button.bg-primary[type="submit"]:hover {
+  background-color: #12082c !important;
+  border-color: #12082c !important;
+}
+
+#confirm:focus-visible,
+button.bg-primary[type="submit"]:focus-visible {
+  --tw-ring-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+div.grid.min-h-svh div.flex.justify-center.gap-2[class*="md:justify-start"] {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+div.grid.min-h-svh div.flex.justify-center.gap-2[class*="md:justify-start"] img.logo {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+div.grid.min-h-svh div.flex.justify-center.gap-2[class*="md:justify-start"]::before {
+  content: "";
+  display: block;
+  width: 4.5rem;
+  height: 4.5rem;
+  flex-shrink: 0;
+  background: url("/public/logo_pbn.png?v=14") center / contain no-repeat;
+  border-radius: 0.5rem;
+}
+
+div.grid.min-h-svh div.flex.justify-center.gap-2[class*="md:justify-start"]::after {
+  content: "PBN ARCHITECT";
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.2;
+  color: #d8d2ef;
+  white-space: nowrap;
+}
+
+div.grid.min-h-svh form input {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+div.grid.min-h-svh form input:focus,
+div.grid.min-h-svh form input:focus-visible {
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  --tw-ring-color: rgba(255, 255, 255, 0.35) !important;
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) hsl(var(--background)) !important;
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) rgba(255, 255, 255, 0.35) !important;
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow) !important;
+  outline: none !important;
+}
+
+div.grid.min-h-svh form button.bg-primary {
+  background-color: #ffffff !important;
+  color: var(--pbn-brand) !important;
+  border: 1px solid var(--pbn-brand) !important;
+}
+
+div.grid.min-h-svh form button.bg-primary:hover {
+  background-color: #f3f1fa !important;
+  color: var(--pbn-brand) !important;
+  border-color: var(--pbn-brand) !important;
+}
+
+div.grid.min-h-svh form button.bg-primary:focus-visible {
+  --tw-ring-color: var(--pbn-brand) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pbn-brand) 40%, transparent) !important;
+}
+
+/* Panneau droit login : moins de gris, logo plus lisible */
+div.grid.min-h-svh > .relative.hidden.bg-muted {
+  background-color: hsl(251 25% 7%) !important;
+}
+
+div.grid.min-h-svh > .relative.hidden.bg-muted img {
+  object-fit: contain !important;
+  object-position: center;
+  opacity: 0.55;
+  transform: scale(0.5);
+  filter: none;
 }

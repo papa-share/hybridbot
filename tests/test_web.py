@@ -18,7 +18,7 @@ class _Item:
 
 
 def test_exa_user_message_timeout():
-    assert "délai" in _exa_user_message(TimeoutError()).lower()
+    assert "répond pas" in _exa_user_message(TimeoutError()).lower()
 
 
 def test_format_context_numbered():
@@ -73,6 +73,15 @@ def test_link_citations_fullwidth():
     assert out == "Point [1](https://a.com) et [2](https://b.com)."
 
 
+def test_link_citations_fullwidth_dagger():
+    sources = [
+        {"index": "1", "title": "A", "url": "https://a.com"},
+        {"index": "4", "title": "D", "url": "https://d.com"},
+    ]
+    text = "Actu 【1†L1-L9】 et suite 【4†L14-L18】."
+    assert link_citations(text, sources) == ("Actu [1](https://a.com) et suite [4](https://d.com).")
+
+
 def test_link_citations_skips_linked():
     sources = [{"index": "1", "title": "A", "url": "https://a.com"}]
     text = "Voir [1](https://a.com) déjà lié."
@@ -84,7 +93,7 @@ def test_normalize_response():
 
 
 def test_strip_sources_footer():
-    body = "Point [1] et [2].\n\n**Sources :**\n1. A — lien\n2. B — lien"
+    body = "Point [1] et [2].\n\n**Sources :**\n1. A : lien\n2. B : lien"
     assert strip_sources_footer(body) == "Point [1] et [2]."
 
 

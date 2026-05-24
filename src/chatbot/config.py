@@ -6,16 +6,47 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_USER_ID = "local_user"
-DEFAULT_USER_NAME = "Utilisateur"
 TEMPERATURE_STEP = 0.1
 TOP_P_STEP = 0.05
 
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".tiff")
-DOCUMENT_EXTENSIONS = (".pdf", ".md", ".txt")
+TEXT_EXTENSIONS = (".md", ".txt")
 MIME_IMAGE_PREFIX = "image/"
 MIME_PDF = "application/pdf"
 MIME_TEXT_PREFIX = "text/"
+
+
+def file_is_pdf_bytes(path: str) -> bool:
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
+def is_pdf_source(*, path: str = "", mime: str = "", name: str = "") -> bool:
+    if mime == MIME_PDF:
+        return True
+    for value in (path, name):
+        if value.lower().endswith(".pdf"):
+            return True
+    return file_is_pdf_bytes(path)
+
+
+def is_text_document_source(*, path: str = "", mime: str = "", name: str = "") -> bool:
+    if mime.startswith(MIME_TEXT_PREFIX):
+        return True
+    for value in (path, name):
+        if value.lower().endswith(TEXT_EXTENSIONS):
+            return True
+    return False
+
+
+def is_document_source(*, path: str = "", mime: str = "", name: str = "") -> bool:
+    return is_pdf_source(path=path, mime=mime, name=name) or is_text_document_source(
+        path=path, mime=mime, name=name
+    )
 
 
 def _env_bool(key: str, default: bool) -> bool:
@@ -41,7 +72,7 @@ class Config:
     DEBUG = _env_bool("DEBUG", default=ENV != "production")
 
     MAX_IMAGE_SIZE_MB = int(os.getenv("MAX_IMAGE_SIZE_MB", "50"))
-    MAX_DOCUMENT_SIZE_MB = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "2"))
+    MAX_DOCUMENT_SIZE_MB = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "50"))
     MAX_FILES = int(os.getenv("MAX_FILES", "5"))
 
     OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
@@ -88,8 +119,6 @@ def validate_config() -> None:
             )
         if config.AUTH_MODE != "password":
             raise ValueError("AUTH_MODE=password obligatoire en production")
-        if not config.DATABASE_URL and not config.AUTH_PASSWORD:
-            raise ValueError("DATABASE_URL ou AUTH_PASSWORD requis en production")
 
 
 validate_config()

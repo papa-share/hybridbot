@@ -2,7 +2,7 @@
 user_env = []
 session_timeout = 3600
 user_session_timeout = 1296000
-cache = true
+cache = false
 allow_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
 [features]
@@ -24,16 +24,14 @@ max_size_mb = 50
 name = "OllamaHybridBot"
 language = "fr-FR"
 cot = "full"
-logo_file_url = "/public/logo_pbn.png"
-custom_meta_image_url = "/public/papa_pro.jfif"
-custom_css = "/public/web.css"
+logo_file_url = "/public/logo_pbn.png?v=14"
+custom_meta_image_url = "/public/logo_pbn.png?v=14"
+login_page_image = "/public/logo_pbn.png?v=14"
+login_page_image_filter = ""
+login_page_image_dark_filter = "brightness-90"
+custom_css = "/public/web.css?v=14"
 custom_js = "/public/readme.js"
-show_chainlit_footer = true
-
-[[UI.header_links]]
-name = "Papa NDIAYE"
-icon_url = "/public/logo_pbn.png"
-url = "https://www.linkedin.com/in/papa-bounama-ndiaye/"
+show_chainlit_footer = false
 
 [meta]
 generated_by = "2.9.6"

@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -7,7 +8,7 @@ from chainlit.data import get_data_layer as get_active_data_layer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from chatbot.config import DEFAULT_USER_NAME, config
+from chatbot.config import config
 
 ROLE_USER = "user"
 ROLE_ADMIN = "admin"
@@ -70,7 +71,7 @@ def user_from_account(row: dict[str, Any]) -> cl.User:
     return cl.User(
         identifier=row["identifier"],
         display_name=name,
-        metadata={"role": row.get("role") or ROLE_USER, "name": name},
+        metadata={"role": row.get("role") or ROLE_USER},
     )
 
 
@@ -79,7 +80,7 @@ def _legacy_user(identifier: str) -> cl.User:
     return cl.User(
         identifier=user_id,
         display_name=user_id,
-        metadata={"role": ROLE_USER, "name": user_id or DEFAULT_USER_NAME},
+        metadata={"role": ROLE_USER},
     )
 
 
@@ -147,14 +148,6 @@ def _validate_role(role: str) -> None:
         raise ValueError(f"Rôle invalide : {role}")
 
 
-async def get_account(identifier: str, engine: AsyncEngine | None = None) -> dict[str, Any] | None:
-    login = _normalize_identifier(identifier)
-    if not login:
-        return None
-    async with _engine_ctx(engine) as db:
-        return await _fetch_one(db, _GET_SQL, {"identifier": login})
-
-
 async def _count_active_admins(engine: AsyncEngine) -> int:
     rows = await _fetch_all(engine, _COUNT_ACTIVE_ADMINS_SQL)
     if not rows:
@@ -174,6 +167,24 @@ async def _require_account(engine: AsyncEngine, identifier: str) -> dict[str, An
     if not account:
         raise ValueError(f"Compte introuvable : {identifier}")
     return account
+
+
+async def _mutate_account(
+    login: str,
+    *,
+    sql: str,
+    params: dict[str, Any],
+    engine: AsyncEngine | None = None,
+    prepare: Callable[[AsyncEngine], Awaitable[None]] | None = None,
+) -> None:
+    async with _engine_ctx(engine) as db:
+        if prepare is not None:
+            await prepare(db)
+        else:
+            await _require_account(db, login)
+        updated = await _execute_update(db, sql, params)
+        if updated == 0:
+            raise ValueError(f"Compte introuvable : {login}")
 
 
 async def authenticate(identifier: str, password: str) -> cl.User | None:
@@ -238,18 +249,21 @@ async def set_account_active(
     if not login:
         raise ValueError("Identifiant requis.")
 
-    async with _engine_ctx(engine) as db:
+    async def prepare(db: AsyncEngine) -> None:
         account = await _require_account(db, login)
         if bool(account.get("active")) == active:
             state = "actif" if active else "inactif"
             raise ValueError(f"Compte déjà {state} : {login}")
         if not active:
             await _ensure_not_last_admin(db, account)
-        updated = await _execute_update(
-            db, _SET_ACTIVE_SQL, {"identifier": login, "active": active}
-        )
-        if updated == 0:
-            raise ValueError(f"Compte introuvable : {login}")
+
+    await _mutate_account(
+        login,
+        sql=_SET_ACTIVE_SQL,
+        params={"identifier": login, "active": active},
+        engine=engine,
+        prepare=prepare,
+    )
 
 
 async def reset_password(
@@ -262,13 +276,12 @@ async def reset_password(
     if not login or not password:
         raise ValueError("Identifiant et mot de passe requis.")
 
-    async with _engine_ctx(engine) as db:
-        await _require_account(db, login)
-        updated = await _execute_update(
-            db, _RESET_PASSWORD_SQL, {"identifier": login, "password": password}
-        )
-        if updated == 0:
-            raise ValueError(f"Compte introuvable : {login}")
+    await _mutate_account(
+        login,
+        sql=_RESET_PASSWORD_SQL,
+        params={"identifier": login, "password": password},
+        engine=engine,
+    )
 
 
 async def set_account_role(
@@ -282,12 +295,17 @@ async def set_account_role(
         raise ValueError("Identifiant requis.")
     _validate_role(role)
 
-    async with _engine_ctx(engine) as db:
+    async def prepare(db: AsyncEngine) -> None:
         account = await _require_account(db, login)
         if account.get("role") == role:
             raise ValueError(f"Compte déjà {role} : {login}")
         if role == ROLE_USER:
             await _ensure_not_last_admin(db, account)
-        updated = await _execute_update(db, _SET_ROLE_SQL, {"identifier": login, "role": role})
-        if updated == 0:
-            raise ValueError(f"Compte introuvable : {login}")
+
+    await _mutate_account(
+        login,
+        sql=_SET_ROLE_SQL,
+        params={"identifier": login, "role": role},
+        engine=engine,
+        prepare=prepare,
+    )

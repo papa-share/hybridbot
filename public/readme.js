@@ -57,6 +57,7 @@
         subtree: true,
         attributes: true,
         attributeFilter: ["data-state"],
+        childList: true,
       });
     }
 

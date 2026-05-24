@@ -1,5 +1,7 @@
 from chainlit.element import Task, TaskList, TaskStatus
 
+from chatbot.flow_ui import apply_llm_flow, push_task_list
+
 
 class WebFlowUI:
     def __init__(self) -> None:
@@ -11,13 +13,6 @@ class WebFlowUI:
             tasks=[self._exa, self._llm],
             status="Recherche en cours",
         )
-
-    async def _push(self) -> None:
-        if not self._sent:
-            await self.task_list.send()
-            self._sent = True
-        else:
-            await self.task_list.update()
 
     def _sync_tasks(self) -> None:
         self.task_list.tasks = [self._exa, *self._sources, self._llm]
@@ -52,24 +47,8 @@ class WebFlowUI:
             self._llm.status = TaskStatus.FAILED
             self._llm.title = "Aucune source"
             self.task_list.status = "Aucun résultat"
-        elif kind == "model":
-            model = data.get("name", "")
-            self._llm.status = TaskStatus.RUNNING
-            self._llm.title = f"Modèle : {model}"
-            self.task_list.status = "Préparation"
-        elif kind == "retry":
-            model = data.get("name", "")
-            self._llm.title = f"Essai : {model}"
-            self._llm.status = TaskStatus.RUNNING
-            self.task_list.status = "Bascule modèle"
-        elif kind == "generating":
-            self._llm.status = TaskStatus.RUNNING
-            self.task_list.status = "Génération"
-        elif kind == "done":
-            self._llm.status = TaskStatus.DONE
-            self.task_list.status = "Terminé"
-        elif kind == "error":
-            self._exa.status = TaskStatus.FAILED
-            self.task_list.status = "Erreur"
+        elif apply_llm_flow(kind, data, self._llm, self.task_list):
+            if kind == "error":
+                self._exa.status = TaskStatus.FAILED
 
-        await self._push()
+        self._sent = await push_task_list(self.task_list, self._sent)

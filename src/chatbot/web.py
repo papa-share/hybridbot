@@ -1,19 +1,16 @@
 import asyncio
 import re
-from collections.abc import Awaitable, Callable
-from typing import Any
 
 from exa_py import AsyncExa
 
 from chatbot.config import config, logger
+from chatbot.flow_events import FlowEvent, emit_flow
 
 _exa: AsyncExa | None = None
-FlowEvent = Callable[[str, dict[str, Any]], Awaitable[None] | None]
-
 SOURCE_STAGGER_S = 0.12
 _CITATION_DAGGER = re.compile(r"\[(\d{1,2})[†][^\]]*\]", re.I)
+_CITATION_FULLWIDTH = re.compile(r"【(\d{1,2})(?:†[^】]*)?】")
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2})\](?!\]|\()", re.I)
-_CITATION_FULLWIDTH = re.compile(r"【(\d{1,2})】")
 _CITATION_BARE = re.compile(r"\[\[(\d{1,2})\]\](?!\()")
 _SOURCE = re.compile(r"\(source\s*(\d{1,2})\)", re.I)
 _HTML_BREAK = re.compile(r"<br\s*/?>", re.I)
@@ -55,40 +52,48 @@ def _exa_attr(item, name: str, default: str = "") -> str:
     return getattr(item, name, None) or default
 
 
-def sources_from_items(items) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
+def _source_rows(items) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
     for i, item in enumerate(items, 1):
-        out.append(
+        rows.append(
             {
                 "index": str(i),
                 "title": _exa_attr(item, "title", "Sans titre"),
                 "url": _exa_attr(item, "url"),
+                "body": _snippet(item),
             }
         )
-    return out
+    return rows
 
 
-def format_context(items) -> str:
-    if not items:
-        return "Aucun résultat web."
+def sources_from_items(items) -> list[dict[str, str]]:
+    return [
+        {"index": row["index"], "title": row["title"], "url": row["url"]}
+        for row in _source_rows(items)
+    ]
 
+
+def _format_context_rows(rows: list[dict[str, str]]) -> str:
     lines = [
         "Contexte web (interne). Cite uniquement avec [1], [2], etc. (crochets ASCII) dans le corps du texte.",
         "Ne termine pas par une section Sources : les renvois [n] suffisent.",
         "Markdown uniquement, pas de HTML.",
         "",
     ]
-    for i, item in enumerate(items, 1):
-        title = _exa_attr(item, "title", "Sans titre")
-        url = _exa_attr(item, "url")
-        body = _snippet(item)
-        lines.append(f"[{i}] {title}")
-        if url:
-            lines.append(url)
-        if body:
-            lines.append(body)
+    for row in rows:
+        lines.append(f"[{row['index']}] {row['title']}")
+        if row["url"]:
+            lines.append(row["url"])
+        if row["body"]:
+            lines.append(row["body"])
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def format_context(items) -> str:
+    if not items:
+        return "Aucun résultat web."
+    return _format_context_rows(_source_rows(items))
 
 
 def link_citations(text: str, sources: list[dict[str, str]]) -> str:
@@ -128,41 +133,32 @@ def _error_detail(exc: Exception) -> str:
 def _exa_user_message(exc: Exception) -> str:
     detail = _error_detail(exc).lower()
     if isinstance(exc, TimeoutError):
-        return "Exa ne répond pas (délai dépassé). Réessaie."
+        return "Exa ne répond pas. Réessaie."
     if isinstance(exc, OSError):
-        return "Connexion Exa impossible. Vérifie ta connexion internet."
+        return "Connexion Exa impossible."
     if "401" in detail or "api key" in detail or "unauthorized" in detail:
-        return "Clé Exa invalide. Vérifie EXA_API_KEY dans .env."
+        return "Clé Exa invalide."
     if "429" in detail or "rate limit" in detail:
-        return "Quota Exa dépassé. Réessaie plus tard."
-    return f"Recherche web impossible : {_error_detail(exc)}"
+        return "Quota Exa dépassé."
+    return "Recherche web impossible."
 
 
-async def _emit_sources(items, on_event: FlowEvent | None) -> list[dict[str, str]]:
-    sources = sources_from_items(items)
-    total = len(items)
-    for i, item in enumerate(items, 1):
-        title = _exa_attr(item, "title", "Sans titre")
-        url = _exa_attr(item, "url")
+async def _emit_source_rows(rows: list[dict[str, str]], on_event: FlowEvent | None) -> None:
+    total = len(rows)
+    for row in rows:
+        index = int(row["index"])
+        title = row["title"]
+        url = row["url"]
         try:
-            await emit_flow(on_event, "source", index=i, total=total, title=title, url=url)
+            await emit_flow(on_event, "source", index=index, total=total, title=title, url=url)
         except Exception as exc:
             logger.warning(f"exa ui source: {_error_detail(exc)}")
-        if i < total:
+        if index < total:
             await asyncio.sleep(SOURCE_STAGGER_S)
     try:
         await emit_flow(on_event, "sources_done", count=total)
     except Exception as exc:
         logger.warning(f"exa ui done: {_error_detail(exc)}")
-    return sources
-
-
-async def emit_flow(on_event: FlowEvent | None, kind: str, **data: Any) -> None:
-    if not on_event:
-        return
-    result = on_event(kind, data)
-    if asyncio.iscoroutine(result):
-        await result
 
 
 async def search_web(
@@ -173,7 +169,7 @@ async def search_web(
         return "", False, []
 
     if not config.EXA_API_KEY:
-        return "Clé Exa manquante : ajoute EXA_API_KEY dans .env.", False, []
+        return "Recherche web indisponible.", False, []
 
     preview = q if len(q) <= 120 else f"{q[:117]}..."
     try:
@@ -201,5 +197,7 @@ async def search_web(
         await emit_flow(on_event, "empty")
         return "Aucun résultat web.", True, []
 
-    sources = await _emit_sources(items, on_event)
-    return format_context(items), True, sources
+    rows = _source_rows(items)
+    sources = sources_from_items(items)
+    await _emit_source_rows(rows, on_event)
+    return _format_context_rows(rows), True, sources

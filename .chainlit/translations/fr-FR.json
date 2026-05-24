@@ -18,7 +18,7 @@
     },
     "auth": {
         "login": {
-            "title": "Connectez-vous pour accéder à l'application",
+            "title": "Connectez-vous à OllamaHybridBot",
             "form": {
                 "email": {
                     "label": "Identifiant",

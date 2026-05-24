@@ -53,6 +53,33 @@ def test_image_classification(mock_file, sample_text_file):
     assert not documents
 
 
+def test_document_accepts_pdf_by_mime(mock_file, temp_dir):
+    path = os.path.join(temp_dir, "upload.bin")
+    with open(path, "wb") as handle:
+        handle.write(b"%PDF-1.4\n")
+    f = mock_file("how rag enhance.pdf", path, "application/pdf")
+    _, documents, errors = validate_uploaded_files([f])
+    assert len(documents) == 1
+    assert not errors
+
+
+def test_document_rejects_unsupported_type(mock_file, temp_dir):
+    path = os.path.join(temp_dir, "notes.exe")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("fake")
+    f = mock_file("notes.exe", path, "application/x-msdownload")
+    _, documents, errors = validate_uploaded_files([f])
+    assert not documents
+    assert errors and "non supporté" in errors[0].lower()
+
+
+def test_document_accepts_supported_extension(mock_file, sample_text_file):
+    f = mock_file("notes.txt", sample_text_file, "text/plain")
+    _, documents, errors = validate_uploaded_files([f])
+    assert len(documents) == 1
+    assert not errors
+
+
 def test_validate_image_path(sample_text_file):
     assert validate_image_path(sample_text_file)
 

@@ -8,23 +8,16 @@ import aiofiles
 import ollama
 from ollama import AsyncClient
 
-from chatbot.config import DOCUMENT_EXTENSIONS, config, logger
+from chatbot.config import config, is_pdf_source, is_text_document_source, logger
+from chatbot.flow_events import emit_flow
+from chatbot.pdf_loader import extract_pdf_content
 from chatbot.validators import validate_image_path
 from chatbot.web import (
-    emit_flow,
     link_citations,
     normalize_response,
     search_web,
     strip_sources_footer,
 )
-
-try:
-    from pypdf import PdfReader
-
-    PDF_SUPPORT = True
-except ImportError:
-    PDF_SUPPORT = False
-    logger.warning("pypdf non installé, PDF désactivé")
 
 _client: AsyncClient | None = None
 _catalog: dict[str, list[str]] | None = None
@@ -57,24 +50,23 @@ def _is_cloud(name: str) -> bool:
     return ":cloud" in name or name.endswith("-cloud")
 
 
-def _ollama_error(error: Exception, model: str = "") -> str:
+def _fail(content: str) -> dict[str, Any]:
+    return {"message": {"content": content}, "error": True}
+
+
+def _classify_ollama_error(error: Exception, model: str = "") -> tuple[str, bool]:
     msg = str(error).lower()
-    raw = str(error)
-    if "subscription" in msg or "403" in raw:
-        return "Modèle cloud : abonnement Ollama requis."
+    if "subscription" in msg or "403" in str(error):
+        return "Modèle cloud : abonnement Ollama requis.", True
     if "does not support image" in msg or "image input" in msg:
-        return "Ce modèle ne lit pas les images. Choisis un modèle [vision] ou renvoie l'image."
-    if "400" in raw or "bad request" in msg:
-        return "Requête refusée (400). Essaie avec une autre image."
-    if "404" in raw or "not found" in msg:
-        return f"Modèle '{model}' introuvable."
+        return "Modèle sans vision.", True
+    if "404" in str(error) or "not found" in msg:
+        return f"Modèle '{model}' introuvable.", False
     if "connection" in msg or "refused" in msg:
-        return "Ollama ne répond pas. Lance `ollama serve`."
-    if "timeout" in msg:
-        return "Trop long. Réessaie."
-    if "500" in raw or "internal server error" in msg:
-        return "Erreur Ollama (500)."
-    return f"Erreur Ollama : {raw}"
+        return "Ollama ne répond pas.", False
+    if isinstance(error, asyncio.TimeoutError) or "timed out" in msg:
+        return "Trop long. Réessaie.", False
+    return "Erreur Ollama.", False
 
 
 def _client_ollama() -> AsyncClient:
@@ -84,24 +76,33 @@ def _client_ollama() -> AsyncClient:
     return _client
 
 
-async def _read_document(path: str) -> str:
+async def _read_document(path: str, mime: str = "", name: str = "") -> str:
     try:
-        if path.lower().endswith(".pdf"):
-            if not PDF_SUPPORT:
-                return "Erreur: pypdf non installé."
-
-            def _pdf():
-                with open(path, "rb") as f:
-                    return "\n".join(p.extract_text() or "" for p in PdfReader(f).pages)
-
-            return await asyncio.to_thread(_pdf)
-
-        if path.lower().endswith(DOCUMENT_EXTENSIONS[1:]):
-            async with aiofiles.open(path, encoding="utf-8") as f:
-                return await f.read()
+        if is_text_document_source(path=path, mime=mime, name=name):
+            async with aiofiles.open(path, encoding="utf-8") as handle:
+                return await handle.read()
         return "Format non supporté"
     except Exception as e:
         return f"Erreur lecture: {e}"
+
+
+async def _load_document_text(
+    path: str,
+    mime: str,
+    name: str,
+    flow_callback: Callable[[str, dict[str, Any]], Any] | None,
+) -> str:
+    if is_pdf_source(path=path, mime=mime, name=name):
+        return await extract_pdf_content(path, name, flow_callback)
+    return await _read_document(path, mime, name)
+
+
+def _file_spec(item: str | tuple[str, str, str]) -> tuple[str, str, str]:
+    if isinstance(item, str):
+        path = item
+        return path, "", os.path.basename(path)
+    path, mime, name = item
+    return str(path), mime or "", name or os.path.basename(path)
 
 
 def _parse_list_response(listed: Any) -> list[str]:
@@ -217,8 +218,7 @@ def _vision_pool(catalog: dict[str, list[str]]) -> list[str]:
     return catalog["vision_cloud"] + catalog["vision_local"]
 
 
-async def vision_candidates() -> list[str]:
-    catalog = await get_catalog()
+def _vision_candidates(catalog: dict[str, list[str]]) -> list[str]:
     pool = _vision_pool(catalog)
     preferred = [name for name in config.VISION_MODELS if name in pool]
     return _rank_preferred(pool, preferred)
@@ -243,8 +243,7 @@ def _web_pool(catalog: dict[str, list[str]]) -> list[str]:
     return pool
 
 
-async def web_candidates() -> list[str]:
-    catalog = await get_catalog()
+def _web_candidates(catalog: dict[str, list[str]]) -> list[str]:
     pool = _web_pool(catalog)
     preferred: list[str] = []
     for name in config.WEB_SEARCH_MODELS + [config.DEFAULT_WEB_MODEL]:
@@ -253,82 +252,79 @@ async def web_candidates() -> list[str]:
     return _rank_preferred(pool, preferred)
 
 
-def _retryable_model_error(error: Exception) -> bool:
-    msg = str(error).lower()
-    raw = str(error)
-    if "image input" in msg or "does not support image" in msg:
-        return True
-    if "subscription" in msg or "403" in raw:
-        return True
-    if "failed to process inputs" in msg or "invalid format" in msg:
-        return True
-    return False
-
-
-async def is_vision_model(model_id: str) -> bool:
-    catalog = await get_catalog()
+def _is_vision_model(model_id: str, catalog: dict[str, list[str]]) -> bool:
     return model_id in catalog["vision_cloud"] or model_id in catalog["vision_local"]
 
 
 async def process_llm_request(
     input_message: str,
     interaction: list[dict[str, Any]],
-    model_name: str,
+    ui_model_label: str,
     temperature: float = config.DEFAULT_TEMPERATURE,
     top_p: float = config.DEFAULT_TOP_P,
     max_tokens: int = config.DEFAULT_MAX_TOKENS,
-    files: list[str] | None = None,
+    files: list[str | tuple[str, str, str]] | None = None,
     image_paths: list[str] | None = None,
     web_search_enabled: bool = False,
     stream_callback: Callable[[str], Any] | None = None,
     flow_callback: Callable[[str, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
-    selected = model_from_label(model_name)
+    selected = model_from_label(ui_model_label)
     images = list(image_paths or [])
     documents = list(files or [])
 
     content = input_message
+    catalog = await get_catalog()
+
     if documents:
+        specs = [_file_spec(item) for item in documents]
+        parts = await asyncio.gather(
+            *(_load_document_text(path, mime, name, flow_callback) for path, mime, name in specs)
+        )
+        failures = [
+            f"{name or os.path.basename(path)}: {text}"
+            for (path, _, name), text in zip(specs, parts, strict=True)
+            if text.startswith("Erreur")
+            or "sans contenu extractible" in text
+            or text == "Format non supporté"
+        ]
+        if failures:
+            await emit_flow(flow_callback, "error")
+            return _fail("\n".join(failures))
+
         content += "\n\nFichiers joints :\n"
-        parts = await asyncio.gather(*(_read_document(d) for d in documents))
-        for path, text in zip(documents, parts, strict=True):
-            content += f"\n--- {os.path.basename(path)} ---\n{text}\n"
+        for (path, _, name), text in zip(specs, parts, strict=True):
+            content += f"\n--- {name or os.path.basename(path)} ---\n{text}\n"
 
     web_used = False
     web_sources: list[dict[str, str]] = []
     if web_search_enabled and input_message.strip():
         search_block, ok, web_sources = await search_web(input_message, on_event=flow_callback)
         if not ok:
-            return {"message": {"content": search_block}, "error": True}
+            return _fail(search_block)
         if search_block:
             content += f"\n\n{search_block}"
             web_used = True
 
     interaction.append({"role": "user", "content": content})
 
-    auto_vision = bool(images) and not await is_vision_model(selected)
+    auto_vision = bool(images) and not _is_vision_model(selected, catalog)
     auto_web = web_search_enabled and bool(input_message.strip())
 
     if auto_vision:
-        vision = await vision_candidates()
+        vision = _vision_candidates(catalog)
         if not vision:
-            return {
-                "message": {"content": "Aucun modèle vision disponible dans Ollama."},
-                "error": True,
-            }
+            return _fail("Aucun modèle vision disponible dans Ollama.")
         if auto_web:
-            web = set(await web_candidates())
+            web = set(_web_candidates(catalog))
             both = [n for n in vision if n in web]
             models_to_try = both or vision
         else:
             models_to_try = vision
     elif auto_web:
-        candidates = await web_candidates()
+        candidates = _web_candidates(catalog)
         if not candidates:
-            return {
-                "message": {"content": "Aucun modèle compatible recherche web (tools)."},
-                "error": True,
-            }
+            return _fail("Aucun modèle compatible recherche web (tools).")
         models_to_try = candidates
     else:
         models_to_try = [selected]
@@ -348,7 +344,7 @@ async def process_llm_request(
             encoded = await asyncio.gather(*(_encode_image(p) for p in images))
             messages[-1]["images"] = encoded  # type: ignore[index]
         except Exception as e:
-            return {"message": {"content": f"Erreur images: {e}"}, "error": True}
+            return _fail(f"Erreur images: {e}")
 
     await emit_flow(flow_callback, "generating")
 
@@ -373,23 +369,25 @@ async def process_llm_request(
             selected = model
             break
         except asyncio.TimeoutError:
-            return {"message": {"content": "Trop long. Réessaie."}, "error": True}
+            return _fail("Trop long. Réessaie.")
         except Exception as e:
             last_error = e
-            if auto_switch and _retryable_model_error(e) and i < len(models_to_try) - 1:
+            message, retryable = _classify_ollama_error(e, model)
+            if auto_switch and retryable and i < len(models_to_try) - 1:
                 logger.info(f"{model} indisponible, essai suivant")
                 await emit_flow(flow_callback, "retry", name=models_to_try[i + 1])
                 continue
             logger.error(f"Ollama: {e}")
-            return {"message": {"content": _ollama_error(e, model)}, "error": True}
+            return _fail(message)
     else:
         if last_error:
+            message, _ = _classify_ollama_error(last_error, selected)
             logger.error(f"Ollama: {last_error}")
-            return {"message": {"content": _ollama_error(last_error, selected)}, "error": True}
+            return _fail(message)
 
     text = normalize_response(full_content or "")
     if not text:
-        return {"message": {"content": "Pas de réponse."}, "error": True}
+        return _fail("Pas de réponse.")
 
     if web_sources:
         text = strip_sources_footer(text)

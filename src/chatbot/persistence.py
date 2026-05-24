@@ -11,7 +11,10 @@ from chatbot.config import config
 
 CHAT_PREFS_KEY = "chat_prefs"
 PREF_FIELDS = ("model", "temperature", "top_p", "max_tokens")
+SESSION_UI_MODEL = "ui_model_label"
+_LEGACY_SESSION_MODEL = "model_name"
 
+# Chainlit utilise LIKE sur metadata (jsonb), invalide en PostgreSQL.
 _FAVORITE_STEPS_SQL = """
 SELECT
     s."id" AS step_id,
@@ -40,20 +43,21 @@ ORDER BY s."createdAt" DESC
 """
 
 
-def _step_dict_from_row(row: dict[str, Any]) -> StepDict | None:
-    metadata_raw = row.get("step_metadata")
-    meta_dict: dict[str, Any] = {}
-    if isinstance(metadata_raw, str):
+def _parse_json_dict(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
         try:
-            meta_dict = json.loads(metadata_raw)
+            parsed = json.loads(raw)
         except json.JSONDecodeError:
             return None
-    elif isinstance(metadata_raw, dict):
-        meta_dict = metadata_raw
-    else:
-        return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
-    if not meta_dict.get("favorite"):
+
+def _step_dict_from_row(row: dict[str, Any]) -> StepDict | None:
+    meta_dict = _parse_json_dict(row.get("step_metadata"))
+    if not meta_dict or not meta_dict.get("favorite"):
         return None
 
     show_input = row.get("step_showinput")
@@ -81,6 +85,8 @@ def _step_dict_from_row(row: dict[str, Any]) -> StepDict | None:
 
 
 class PostgresDataLayer(SQLAlchemyDataLayer):
+    """Couche PostgreSQL avec correctif favoris (jsonb @> au lieu de LIKE Chainlit)."""
+
     async def get_favorite_steps(self, user_id: str) -> list[StepDict]:
         result = await self.execute_sql(
             _FAVORITE_STEPS_SQL,
@@ -97,13 +103,8 @@ class PostgresDataLayer(SQLAlchemyDataLayer):
 
 
 def thread_is_shared(thread: dict[str, Any]) -> bool:
-    raw = thread.get("metadata") or {}
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except json.JSONDecodeError:
-            return False
-    return isinstance(raw, dict) and bool(raw.get("is_shared"))
+    meta = _parse_json_dict(thread.get("metadata") or {})
+    return bool(meta and meta.get("is_shared"))
 
 
 if config.DATABASE_URL:
@@ -130,24 +131,29 @@ def _session_chat_settings() -> dict[str, Any]:
     return dict(settings) if isinstance(settings, dict) else {}
 
 
-def chat_prefs_from_session(default_model: str) -> dict[str, Any]:
-    prefs = default_chat_prefs(default_model)
-    for key, value in _session_chat_settings().items():
-        if key in PREF_FIELDS and value is not None:
-            prefs[key] = value
+def _overlay_prefs(prefs: dict[str, Any], mapping: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(prefs)
+    for key in PREF_FIELDS:
+        value = mapping.get(key)
+        if value is not None:
+            merged[key] = value
+    return merged
 
-    model = cl.user_session.get("model_name")
-    if model:
-        prefs["model"] = model
-    for key in ("temperature", "top_p", "max_tokens"):
+
+def _session_pref_mapping() -> dict[str, Any]:
+    mapping = dict(_session_chat_settings())
+    ui_model = cl.user_session.get(SESSION_UI_MODEL) or cl.user_session.get(_LEGACY_SESSION_MODEL)
+    if ui_model:
+        mapping["model"] = ui_model
+    for key in PREF_FIELDS[1:]:
         value = cl.user_session.get(key)
         if value is not None:
-            prefs[key] = value
-    return prefs
+            mapping[key] = value
+    return mapping
 
 
-async def load_chat_prefs(default_model: str, *, use_user_store: bool) -> dict[str, Any]:
-    prefs = chat_prefs_from_session(default_model)
+async def read_chat_prefs(default_model: str, *, use_user_store: bool) -> dict[str, Any]:
+    prefs = _overlay_prefs(default_chat_prefs(default_model), _session_pref_mapping())
     if not use_user_store or not config.DATABASE_URL:
         return prefs
 
@@ -167,14 +173,11 @@ async def load_chat_prefs(default_model: str, *, use_user_store: bool) -> dict[s
     if not isinstance(stored, dict):
         return prefs
 
-    for key in PREF_FIELDS:
-        if key in stored and stored[key] is not None:
-            prefs[key] = stored[key]
-    return prefs
+    return _overlay_prefs(prefs, stored)
 
 
-def apply_chat_prefs(prefs: dict[str, Any]) -> None:
-    cl.user_session.set("model_name", prefs["model"])
+def write_chat_prefs(prefs: dict[str, Any]) -> None:
+    cl.user_session.set(SESSION_UI_MODEL, prefs["model"])
     cl.user_session.set("temperature", prefs["temperature"])
     cl.user_session.set("top_p", prefs["top_p"])
     cl.user_session.set("max_tokens", prefs["max_tokens"])
@@ -185,19 +188,15 @@ def apply_chat_prefs(prefs: dict[str, Any]) -> None:
 
 
 def prefs_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "model": settings.get("model") or cl.user_session.get("model_name"),
-        "temperature": settings.get(
-            "temperature", cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE)
-        ),
-        "top_p": settings.get("top_p", cl.user_session.get("top_p", config.DEFAULT_TOP_P)),
-        "max_tokens": settings.get(
-            "max_tokens", cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS)
-        ),
-    }
+    mapping = _session_pref_mapping()
+    for key in PREF_FIELDS:
+        if settings.get(key) is not None:
+            mapping[key] = settings[key]
+    default_model = mapping.get("model") or config.DEFAULT_MODEL
+    return _overlay_prefs(default_chat_prefs(default_model), mapping)
 
 
-async def save_chat_prefs(prefs: dict[str, Any]) -> None:
+async def persist_chat_prefs(prefs: dict[str, Any]) -> None:
     if not config.DATABASE_URL:
         return
 

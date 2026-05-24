@@ -16,6 +16,7 @@ from chatbot.config import (
     config,
     logger,
 )
+from chatbot.flow import make_flow_handler
 from chatbot.llm import (
     build_model_labels,
     get_catalog,
@@ -24,17 +25,23 @@ from chatbot.llm import (
     process_llm_request,
 )
 from chatbot.persistence import (
-    apply_chat_prefs,
-    load_chat_prefs,
+    SESSION_UI_MODEL,
+    persist_chat_prefs,
     prefs_from_settings,
-    save_chat_prefs,
+    read_chat_prefs,
     thread_is_shared,
+    write_chat_prefs,
 )
 from chatbot.validators import validate_uploaded_files
-from chatbot.web_flow import WebFlowUI
 
 WEB_COMMAND = "Web"
 ERROR_MSG = "Erreur interne. Réessaie."
+MISSING_DOC_MSG = "Jointe un PDF ou un fichier texte avant d'envoyer."
+
+
+def _expects_attachment(text: str) -> bool:
+    lower = text.lower()
+    return "document joint" in lower or "pdf joint" in lower or "fichier joint" in lower
 
 
 @cl.set_starters
@@ -47,7 +54,7 @@ async def set_chat_starters(_user, _language):
         ),
         cl.Starter(
             label="Résumer un PDF",
-            message="Résume le document joint : points clés et structure.",
+            message="Résume le document joint : points clés et structure. (Joindre le PDF avant d'envoyer.)",
         ),
         cl.Starter(
             label="Expliquer du code",
@@ -76,10 +83,14 @@ async def on_shared_thread_view(thread: dict, viewer: cl.User | None):
 
 
 def _session_params() -> dict[str, Any]:
-    raw = cl.user_session.get("model_name") or config.DEFAULT_MODEL
+    ui_label = (
+        cl.user_session.get(SESSION_UI_MODEL)
+        or cl.user_session.get("model_name")
+        or config.DEFAULT_MODEL
+    )
     return {
-        "model_name": model_from_label(raw.strip()),
-        "model_label": raw,
+        "ollama_model_id": model_from_label(ui_label.strip()),
+        "ui_model_label": ui_label,
         "temperature": cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE),
         "top_p": cl.user_session.get("top_p", config.DEFAULT_TOP_P),
         "max_tokens": cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS),
@@ -153,12 +164,21 @@ async def _prepare_settings(
     *, refresh_models: bool, use_user_store: bool
 ) -> tuple[list[str], dict[str, Any], int]:
     models, default_label, default_idx = await _load_models(refresh=refresh_models)
-    prefs = await load_chat_prefs(default_label, use_user_store=use_user_store)
+    prefs = await read_chat_prefs(default_label, use_user_store=use_user_store)
     if prefs["model"] not in models:
         prefs["model"] = models[default_idx] if models else default_label
-    apply_chat_prefs(prefs)
+    write_chat_prefs(prefs)
     idx = models.index(prefs["model"]) if prefs["model"] in models else default_idx
     return models, prefs, idx
+
+
+async def _bootstrap_ui(*, refresh_models: bool, use_user_store: bool) -> None:
+    models, prefs, idx = await _prepare_settings(
+        refresh_models=refresh_models,
+        use_user_store=use_user_store,
+    )
+    await _set_composer_commands()
+    await _send_settings(models, prefs, idx)
 
 
 def _interaction() -> list[dict[str, Any]]:
@@ -182,8 +202,8 @@ def _interaction_from_thread(thread: dict) -> list[dict[str, Any]]:
 
 async def _reply(result: dict[str, Any], msg: cl.Message, params: dict) -> None:
     if result.get("has_images") and not cl.user_session.get("vision_model_used"):
-        model_used = result.get("model_used", params["model_name"])
-        if model_used != params["model_name"] and not result.get("error"):
+        model_used = result.get("model_used", params["ollama_model_id"])
+        if model_used != params["ollama_model_id"] and not result.get("error"):
             await cl.Message(content=f"Image analysée avec : {model_used}").send()
             cl.user_session.set("vision_model_used", True)
 
@@ -194,8 +214,6 @@ async def _reply(result: dict[str, Any], msg: cl.Message, params: dict) -> None:
 
     content = (result.get("message") or {}).get("content") or msg.content
     msg.content = content
-    if getattr(msg, "streaming", False):
-        await msg.stream_token(content, is_sequence=True)
     await msg.send()
 
 
@@ -203,27 +221,21 @@ async def _reply(result: dict[str, Any], msg: cl.Message, params: dict) -> None:
 async def start_chat():
     _init_interaction()
     cl.user_session.set("vision_model_used", False)
-
-    models, prefs, idx = await _prepare_settings(refresh_models=True, use_user_store=True)
-    await _set_composer_commands()
-    await _send_settings(models, prefs, idx)
+    await _bootstrap_ui(refresh_models=True, use_user_store=True)
 
 
 @cl.on_settings_update
 async def on_settings_update(settings):
     prefs = prefs_from_settings(settings)
-    apply_chat_prefs(prefs)
-    await save_chat_prefs(prefs)
+    write_chat_prefs(prefs)
+    await persist_chat_prefs(prefs)
 
 
 @cl.on_chat_resume
 async def on_chat_resume(thread: dict):
     cl.user_session.set("interaction", _interaction_from_thread(thread))
     cl.user_session.set("vision_model_used", False)
-
-    models, prefs, idx = await _prepare_settings(refresh_models=False, use_user_store=False)
-    await _set_composer_commands()
-    await _send_settings(models, prefs, idx)
+    await _bootstrap_ui(refresh_models=False, use_user_store=False)
 
 
 @cl.on_message
@@ -239,30 +251,34 @@ async def main(message: cl.Message):
                 if not images and not documents:
                     return
 
+        if _expects_attachment(text) and not documents:
+            await cl.Message(content=MISSING_DOC_MSG).send()
+            return
+
         msg = cl.Message(content="")
         interaction = _interaction()
         params = _session_params()
         web_on = message.command == WEB_COMMAND
 
-        async def run_llm(flow_cb):
-            return await process_llm_request(
-                input_message=text,
-                interaction=interaction,
-                model_name=params["model_label"],
-                temperature=params["temperature"],
-                top_p=params["top_p"],
-                max_tokens=params["max_tokens"],
-                files=[f.path for f in documents] if documents else None,
-                image_paths=[f.path for f in images] if images else None,
-                web_search_enabled=web_on,
-                stream_callback=msg.stream_token,
-                flow_callback=flow_cb,
-            )
+        flow_cb = make_flow_handler(has_documents=bool(documents), web_on=web_on)
 
-        if web_on:
-            result = await run_llm(WebFlowUI().handle)
-        else:
-            result = await run_llm(None)
+        result = await process_llm_request(
+            input_message=text,
+            interaction=interaction,
+            ui_model_label=params["ui_model_label"],
+            temperature=params["temperature"],
+            top_p=params["top_p"],
+            max_tokens=params["max_tokens"],
+            files=(
+                [(str(f.path), f.mime or "", f.name or "") for f in documents]
+                if documents
+                else None
+            ),
+            image_paths=[f.path for f in images] if images else None,
+            web_search_enabled=web_on,
+            stream_callback=msg.stream_token,
+            flow_callback=flow_cb,
+        )
 
         await _reply(result, msg, params)
 

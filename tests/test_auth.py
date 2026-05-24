@@ -21,13 +21,14 @@ def test_user_from_account():
     assert user.identifier == "alice"
     assert user.display_name == "Alice"
     assert user.metadata["role"] == ROLE_ADMIN
-    assert user.metadata["name"] == "Alice"
+    assert "name" not in user.metadata
 
 
 def test_user_from_account_fallback_name():
     user = user_from_account({"identifier": "bob", "role": ROLE_USER})
     assert user.display_name == "bob"
-    assert user.metadata["name"] == "bob"
+    assert user.metadata["role"] == ROLE_USER
+    assert "name" not in user.metadata
 
 
 def test_authenticate_legacy(monkeypatch):
