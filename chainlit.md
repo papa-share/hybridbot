@@ -2,32 +2,61 @@
 
 ![PBN ARCHITECT](public/logo_pbn.png?v=14)
 
-Guide d'utilisation dans l'application.
+Interface de chat développée par **PBN ARCHITECT**. Vous conversez avec des modèles Ollama (sur votre machine ou dans le cloud), avec la possibilité d'enrichir vos questions avec le web, des documents ou des images.
 
-OllamaHybridBot est l'interface de chat de **PBN ARCHITECT**. Les réponses passent par Ollama (local ou cloud). La recherche web passe par Exa lorsqu'elle est activée avant l'envoi.
+## Premiers pas
 
-## Utilisation
+À l'ouverture, des **`starters`** proposent des exemples : 
+- **Actualités IA,** 
+- **Résumé de PDF,** 
+- **Explication de code,** 
+- **Analyse d'image.** 
 
-Un message part vers le modèle choisi dans les réglages : température, top P, limite de tokens. Les préfixes `[local]`, `[cloud]`, `[vision local]` et `[vision cloud]` indiquent où tourne le modèle.
+Cliquez sur l'un d'eux pour préremplir le message, ou écrivez directement dans la zone de saisie.
 
-La recherche web interroge Exa, puis produit une synthèse avec des renvois numérotés vers les sources (`[1]`, `[2]`, etc.).
+L'icône **`engrenage`** ouvre les réglages : choix du modèle, température, top P et limite de tokens. Ces préférences sont conservées pour votre compte lorsque la connexion est activée.
 
-Pièces jointes : PDF, Markdown, texte (5 fichiers max, 50 Mo ; Java 11+ pour les PDF), images PNG/JPG. Le texte extrait ou l'image est transmis au modèle. Si le modèle actif ne gère pas la vision, l'application bascule vers un modèle vision disponible.
+Pour démarrer une conversation vierge, utilisez l'icône **`crayon`** en haut à gauche.
 
-Document et recherche web peuvent être combinés dans le même message. La progression s'affiche dans le panneau Tasks.
+## Poser une question
 
-## Historique, favoris, partage
+Tapez votre message et envoyez. La réponse est produite par le modèle sélectionné dans les réglages.
 
-Sans PostgreSQL, les fils ne sont pas conservés entre les sessions.
+Dans la liste des modèles, le préfixe indique où il s'exécute :
 
-Avec login et `DATABASE_URL` : historique dans la barre latérale, messages favoris réutilisables depuis le composer, partage d'un fil en lecture seule (`/share/{id}`) via le menu ⋯. Nouveau fil : icône crayon en haut à gauche.
+| Préfixe | Signification |
+| --- | --- |
+| `[local]` | Votre machine |
+| `[cloud]` | Cloud Ollama |
+| `[vision local]` | Vision sur votre machine |
+| `[vision cloud]` | Vision dans le cloud |
 
-## Interface
+Seuls les modèles de conversation apparaissent. Vous n'avez pas à gérer les modèles d'embedding ou de transcription : ils sont filtrés.
 
-Logo **PBN ARCHITECT** : connexion et en-tête. Couleur d'accent `#070318`.
+## Recherche web
 
-Starters disponibles : veille IA, résumé de document, explication de code, analyse d'image.
+Activez le bouton **`globe`** avant d'envoyer. L'application cherche des pages en lien avec votre question, puis rédige une synthèse avec des renvois numérotés `[1]`, `[2]`, etc. Cliquez sur un numéro pour ouvrir la source.
 
-## Administration
+Utilisez ce mode pour l'actualité, la veille ou toute question qui demande des informations récentes. Le panneau **`Tasks`** montre l'avancement pendant la recherche.
 
-Gestion des comptes en CLI (`make user-create`, `make user-list`, etc.). Détail complet dans le README.
+## Documents et images
+
+**`Documents`** : PDF, Markdown ou texte. Joignez le fichier (jusqu'à 5 fichiers, 50 Mo chacun), puis posez votre question : résumé, points clés, recherche d'information dans le contenu. Les PDF doivent contenir une couche texte (pas seulement une image scannée).
+
+**`Images`** : PNG ou JPG. Joignez l'image et demandez une description, une analyse ou une lecture de détail. Si le modèle choisi ne gère pas la vision, l'application bascule seule vers un modèle adapté.
+
+Vous pouvez combiner document, image et recherche web dans le même message. Le panneau Tasks suit chaque étape.
+
+## Vos conversations
+
+Si vous êtes connecté avec un compte, vos fils apparaissent dans la **barre latérale**. Vous retrouvez l'historique d'une session à l'autre.
+
+**`Favoris`** : cliquez sur l'étoile d'un de vos messages pour le garder sous la main. Vous pourrez le réutiliser depuis la zone de saisie.
+
+**`Partage`** : menu ⋯ d'un fil, puis « Partager ». Le lien ouvre la conversation en lecture seule. Même menu pour retirer le partage.
+
+Sans connexion, les conversations ne sont pas enregistrées : chaque visite repart de zéro.
+
+## Connexion
+
+Lorsque l'authentification est activée, identifiant et mot de passe vous sont communiqués par l'administrateur.

@@ -2,10 +2,24 @@
 
 ![PBN ARCHITECT](public/logo_pbn.png)
 
-OllamaHybridBot est l'interface de chat de **PBN ARCHITECT**, branchée sur **Ollama**. L'application route les conversations vers des modèles locaux ou cloud, enrichit les réponses avec une recherche web sourcée (Exa), traite des documents et des images, et gère le travail en équipe avec historique PostgreSQL.
+OllamaHybridBot est l'interface de chat développée par **PBN ARCHITECT**, branchée sur **Ollama**. L'application route les conversations vers des modèles locaux ou cloud, enrichit les réponses avec une recherche web sourcée (Exa), traite des documents et des images, et gère le travail en équipe avec historique PostgreSQL.
+
+## Interface
+
+Connexion, page d'accueil avec starters, réglages, recherche web (Tasks + citations), partage de fil et choix du thème.
+
+| | |
+| --- | --- |
+| **Connexion** | **Accueil** |
+| ![Connexion](public/screenshots/login.png) | ![Accueil](public/screenshots/accueil.png) |
+| **Réglages** | **Thème clair / sombre** |
+| ![Réglages](public/screenshots/parametre.png) | ![Thème](public/screenshots/selecteur_theme.png) |
+| **Recherche web** | **Partage d'un fil** |
+| ![Recherche web](public/screenshots/web.png) | ![Partage](public/screenshots/share.png) |
 
 ## Contenu
 
+- [Interface](#interface)
 - [Ce que fait l'application](#ce-que-fait-lapplication)
 - [Pipeline](#pipeline)
 - [Stack](#stack)
@@ -142,7 +156,7 @@ src/chatbot/
   config.py           Variables .env
   validators.py       Validation des pièces jointes
 
-public/               logo_pbn.png, favicon.png, web.css, starters SVG
+public/               logo_pbn.png, favicon.png, web.css, screenshots/, starters SVG
 .chainlit/            config.toml, traductions
 scripts/              init_db.py, manage_user.py, schema.sql
 tests/                pytest (67 tests)
