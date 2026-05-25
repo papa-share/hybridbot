@@ -14,7 +14,7 @@ PREF_FIELDS = ("model", "temperature", "top_p", "max_tokens")
 SESSION_UI_MODEL = "ui_model_label"
 _LEGACY_SESSION_MODEL = "model_name"
 
-# Chainlit utilise LIKE sur metadata (jsonb), invalide en PostgreSQL.
+# Favoris : metadata jsonb @> '{"favorite": true}'
 _FAVORITE_STEPS_SQL = """
 SELECT
     s."id" AS step_id,
@@ -85,7 +85,7 @@ def _step_dict_from_row(row: dict[str, Any]) -> StepDict | None:
 
 
 class PostgresDataLayer(SQLAlchemyDataLayer):
-    """Couche PostgreSQL avec correctif favoris (jsonb @> au lieu de LIKE Chainlit)."""
+    """Couche PostgreSQL : favoris via requête jsonb sur metadata."""
 
     async def get_favorite_steps(self, user_id: str) -> list[StepDict]:
         result = await self.execute_sql(

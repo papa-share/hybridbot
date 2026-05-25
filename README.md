@@ -143,6 +143,7 @@ src/chatbot/
   flow_ui.py          Affichage Tasks Chainlit
   flow_events.py      Événements partagés des flows
   pdf_loader.py       Extraction PDF
+  document_load.py    Résultat typé chargement document
   persistence.py      PostgreSQL, prefs, PostgresDataLayer
   auth.py             Authentification
   config.py           Variables .env
@@ -151,7 +152,7 @@ src/chatbot/
 public/               logo_pbn.png, favicon.png, web.css, screenshots/, starters SVG
 .chainlit/            config.toml, traductions
 scripts/              init_db.py, manage_user.py, schema.sql
-tests/                pytest (67 tests)
+tests/                pytest (86 tests)
 chainlit.md           Guide affiché dans l'app (« Lisez-moi »)
 ```
 
@@ -260,9 +261,7 @@ Dépendances dev installées par `make install-dev` : ruff, black, pytest, pyrig
 
 ### PostgresDataLayer et favoris
 
-Avec `DATABASE_URL`, l'application enregistre `PostgresDataLayer` (`src/chatbot/persistence.py`) à la place du `SQLAlchemyDataLayer` Chainlit.
-
-Chainlit filtre les favoris avec `metadata LIKE '%"favorite": true%'`. Sur PostgreSQL, `metadata` est en jsonb : cela provoque `operator does not exist: jsonb ~~ unknown`. L'override utilise `metadata @> '{"favorite": true}'::jsonb`. Ne pas supprimer cette classe si l'historique et les favoris sont activés.
+Avec `DATABASE_URL`, l'application enregistre `PostgresDataLayer` (`src/chatbot/persistence.py`), qui étend `SQLAlchemyDataLayer` et récupère les messages favoris par requête jsonb sur `metadata`.
 
 ## Guide utilisateur in-app
 
