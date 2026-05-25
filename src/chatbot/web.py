@@ -4,7 +4,7 @@ import re
 from exa_py import AsyncExa
 
 from chatbot.config import config, logger
-from chatbot.flow_events import FlowEvent, emit_flow
+from chatbot.flow_events import FlowEvent, emit_flow, safe_emit
 
 _exa: AsyncExa | None = None
 SOURCE_STAGGER_S = 0.12
@@ -66,11 +66,12 @@ def _source_rows(items) -> list[dict[str, str]]:
     return rows
 
 
+def sources_from_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [{"index": row["index"], "title": row["title"], "url": row["url"]} for row in rows]
+
+
 def sources_from_items(items) -> list[dict[str, str]]:
-    return [
-        {"index": row["index"], "title": row["title"], "url": row["url"]}
-        for row in _source_rows(items)
-    ]
+    return sources_from_rows(_source_rows(items))
 
 
 def _format_context_rows(rows: list[dict[str, str]]) -> str:
@@ -143,16 +144,18 @@ async def _emit_source_rows(rows: list[dict[str, str]], on_event: FlowEvent | No
         index = int(row["index"])
         title = row["title"]
         url = row["url"]
-        try:
-            await emit_flow(on_event, "source", index=index, total=total, title=title, url=url)
-        except Exception as exc:
-            logger.warning(f"exa ui source: {_error_detail(exc)}")
+        await safe_emit(
+            on_event,
+            "source",
+            log_label="exa ui source",
+            index=index,
+            total=total,
+            title=title,
+            url=url,
+        )
         if index < total:
             await asyncio.sleep(SOURCE_STAGGER_S)
-    try:
-        await emit_flow(on_event, "sources_done", count=total)
-    except Exception as exc:
-        logger.warning(f"exa ui done: {_error_detail(exc)}")
+    await safe_emit(on_event, "sources_done", log_label="exa ui done", count=total)
 
 
 async def search_web(
@@ -166,10 +169,7 @@ async def search_web(
         return "Recherche web indisponible.", False, []
 
     preview = q if len(q) <= 120 else f"{q[:117]}..."
-    try:
-        await emit_flow(on_event, "searching", query=preview)
-    except Exception as exc:
-        logger.warning(f"exa ui search: {_error_detail(exc)}")
+    await safe_emit(on_event, "searching", log_label="exa ui search", query=preview)
 
     try:
         response = await _client().search(
@@ -180,11 +180,9 @@ async def search_web(
         )
     except Exception as exc:
         logger.error(f"exa search: {_error_detail(exc)}")
-        try:
-            await emit_flow(on_event, "error", message=_exa_user_message(exc))
-        except Exception as ui_exc:
-            logger.warning(f"exa ui error: {_error_detail(ui_exc)}")
-        return _exa_user_message(exc), False, []
+        message = _exa_user_message(exc)
+        await safe_emit(on_event, "error", log_label="exa ui error", message=message)
+        return message, False, []
 
     items = getattr(response, "results", None) or []
     if not items:
@@ -192,6 +190,6 @@ async def search_web(
         return "Aucun résultat web.", True, []
 
     rows = _source_rows(items)
-    sources = sources_from_items(items)
+    sources = sources_from_rows(rows)
     await _emit_source_rows(rows, on_event)
     return _format_context_rows(rows), True, sources

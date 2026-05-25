@@ -22,7 +22,6 @@ from chatbot.llm import (
     get_catalog,
     invalidate_catalog,
     label_for_model,
-    model_from_label,
     process_llm_request,
 )
 from chatbot.persistence import (
@@ -33,7 +32,7 @@ from chatbot.persistence import (
     thread_is_shared,
     write_chat_prefs,
 )
-from chatbot.validators import validate_uploaded_files
+from chatbot.validators import upload_file_spec, validate_uploaded_files
 
 WEB_COMMAND = "Web"
 ERROR_MSG = "Erreur interne. Réessaie."
@@ -84,14 +83,26 @@ async def on_shared_thread_view(thread: dict, viewer: cl.User | None):
 
 
 def _session_params() -> dict[str, Any]:
-    ui_label = read_session_ui_model(config.DEFAULT_MODEL)
     return {
-        "ollama_model_id": model_from_label(ui_label.strip()),
-        "ui_model_label": ui_label,
+        "ui_model_label": read_session_ui_model(config.DEFAULT_MODEL),
         "temperature": cl.user_session.get("temperature", config.DEFAULT_TEMPERATURE),
         "top_p": cl.user_session.get("top_p", config.DEFAULT_TOP_P),
         "max_tokens": cl.user_session.get("max_tokens", config.DEFAULT_MAX_TOKENS),
     }
+
+
+def _resolve_prefs_model(
+    prefs: dict[str, Any],
+    models: list[str],
+    *,
+    default_label: str,
+    default_idx: int,
+) -> dict[str, Any]:
+    if not models or prefs["model"] in models:
+        return prefs
+    updated = dict(prefs)
+    updated["model"] = models[default_idx] if default_idx < len(models) else default_label
+    return updated
 
 
 def _init_interaction() -> None:
@@ -162,8 +173,9 @@ async def _prepare_settings(
 ) -> tuple[list[str], dict[str, Any], int]:
     models, default_label, default_idx = await _load_models(refresh=refresh_models)
     prefs = await read_chat_prefs(default_label, use_user_store=use_user_store)
-    if prefs["model"] not in models:
-        prefs["model"] = models[default_idx] if models else default_label
+    prefs = _resolve_prefs_model(
+        prefs, models, default_label=default_label, default_idx=default_idx
+    )
     write_chat_prefs(prefs)
     idx = models.index(prefs["model"]) if prefs["model"] in models else default_idx
     return models, prefs, idx
@@ -197,7 +209,7 @@ def _interaction_from_thread(thread: dict) -> list[dict[str, Any]]:
     return interaction
 
 
-async def _reply(result: dict[str, Any], msg: cl.Message, _params: dict) -> None:
+async def _reply(result: dict[str, Any], msg: cl.Message) -> None:
     if result.get("error"):
         content = (result.get("message") or {}).get("content") or ERROR_MSG
         await cl.Message(content=content).send()
@@ -220,9 +232,11 @@ async def on_settings_update(settings):
     prefs = prefs_from_settings(settings)
     catalog = await get_catalog(refresh=True)
     models = build_model_labels(catalog)
-    if models and prefs["model"] not in models:
-        default_label = label_for_model(catalog, config.DEFAULT_MODEL)
-        prefs["model"] = default_label if default_label in models else models[0]
+    default_label = label_for_model(catalog, config.DEFAULT_MODEL)
+    default_idx = models.index(default_label) if default_label in models else 0
+    prefs = _resolve_prefs_model(
+        prefs, models, default_label=default_label, default_idx=default_idx
+    )
     write_chat_prefs(prefs)
     await persist_chat_prefs(prefs)
 
@@ -264,18 +278,14 @@ async def main(message: cl.Message):
             temperature=params["temperature"],
             top_p=params["top_p"],
             max_tokens=params["max_tokens"],
-            files=(
-                [(str(f.path), f.mime or "", f.name or "") for f in documents]
-                if documents
-                else None
-            ),
+            files=([upload_file_spec(f) for f in documents] if documents else None),
             image_paths=[f.path for f in images] if images else None,
             web_search_enabled=web_on,
             stream_callback=msg.stream_token,
             flow_callback=flow_cb,
         )
 
-        await _reply(result, msg, params)
+        await _reply(result, msg)
 
     except Exception as e:
         logger.error(f"main: {e}", exc_info=True)

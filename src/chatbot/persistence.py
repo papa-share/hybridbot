@@ -165,19 +165,28 @@ def _session_pref_mapping() -> dict[str, Any]:
     return mapping
 
 
-async def read_chat_prefs(default_model: str, *, use_user_store: bool) -> dict[str, Any]:
-    prefs = _overlay_prefs(default_chat_prefs(default_model), _session_pref_mapping())
-    if not use_user_store or not config.DATABASE_URL:
-        return prefs
-
+def _active_user_data_layer() -> tuple[User, SQLAlchemyDataLayer] | None:
+    if not config.DATABASE_URL:
+        return None
     user = cl.user_session.get("user")
     if not user:
-        return prefs
-
+        return None
     data_layer = get_active_data_layer()
     if not data_layer:
+        return None
+    return user, data_layer
+
+
+async def read_chat_prefs(default_model: str, *, use_user_store: bool) -> dict[str, Any]:
+    prefs = _overlay_prefs(default_chat_prefs(default_model), _session_pref_mapping())
+    if not use_user_store:
         return prefs
 
+    active = _active_user_data_layer()
+    if not active:
+        return prefs
+
+    user, data_layer = active
     persisted = await data_layer.get_user(user.identifier)
     if not persisted or not persisted.metadata:
         return prefs
@@ -210,17 +219,11 @@ def prefs_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 async def persist_chat_prefs(prefs: dict[str, Any]) -> None:
-    if not config.DATABASE_URL:
+    active = _active_user_data_layer()
+    if not active:
         return
 
-    user = cl.user_session.get("user")
-    if not user:
-        return
-
-    data_layer = get_active_data_layer()
-    if not data_layer:
-        return
-
+    user, data_layer = active
     stored = {key: prefs[key] for key in PREF_FIELDS}
     metadata: dict[str, Any] = dict(user.metadata or {})
     existing = await data_layer.get_user(user.identifier)

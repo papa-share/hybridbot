@@ -1,5 +1,12 @@
 from chainlit.element import Task, TaskList, TaskStatus
 
+LLM_FLOW_EVENTS = frozenset({"model", "retry", "generating", "done", "error"})
+
+
+def safe_title(value: str | None, *, default: str = "") -> str:
+    text = (value or default).replace("\n", " ")
+    return text or default
+
 
 async def push_task_list(task_list: TaskList, sent: bool) -> bool:
     if not sent:
@@ -10,6 +17,8 @@ async def push_task_list(task_list: TaskList, sent: bool) -> bool:
 
 
 def apply_llm_flow(kind: str, data: dict, llm_task: Task, task_list: TaskList) -> bool:
+    if kind not in LLM_FLOW_EVENTS:
+        return False
     if kind == "model":
         llm_task.status = TaskStatus.RUNNING
         llm_task.title = "Génération"
@@ -27,6 +36,4 @@ def apply_llm_flow(kind: str, data: dict, llm_task: Task, task_list: TaskList) -
     elif kind == "error":
         llm_task.status = TaskStatus.FAILED
         task_list.status = data.get("message") or "Erreur"
-    else:
-        return False
     return True

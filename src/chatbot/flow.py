@@ -2,9 +2,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from chatbot.document_flow import DocumentFlowUI
+from chatbot.flow_ui import LLM_FLOW_EVENTS
 from chatbot.web_flow import WebFlowUI
-
-_LLM_FLOW_EVENTS = frozenset({"model", "retry", "generating", "done", "error"})
 
 
 class _FlowUI(Protocol):
@@ -22,7 +21,7 @@ async def dispatch_flow_event(
         if doc_flow:
             await doc_flow.handle(kind[4:], data)
         return
-    if kind in _LLM_FLOW_EVENTS:
+    if kind in LLM_FLOW_EVENTS:
         target = web_flow or doc_flow
         if target:
             await target.handle(kind, data)

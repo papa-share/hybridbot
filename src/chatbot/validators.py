@@ -23,6 +23,13 @@ def _upload_name(file) -> str:
     return getattr(file, "name", None) or ""
 
 
+def upload_file_spec(file) -> tuple[str, str, str]:
+    path = _upload_path(file)
+    mime = _upload_mime(file)
+    name = _upload_name(file) or os.path.basename(path)
+    return path, mime, name
+
+
 def validate_file_size(file_path: str, max_size_mb: int) -> tuple[bool, str]:
     try:
         if not os.path.exists(file_path):
@@ -37,7 +44,7 @@ def validate_file_size(file_path: str, max_size_mb: int) -> tuple[bool, str]:
 
 
 def validate_file_type(file, allowed_types: list[str]) -> tuple[bool, str]:
-    mime = getattr(file, "mime", None)
+    mime = _upload_mime(file)
     if not mime:
         return False, "Type MIME manquant"
 

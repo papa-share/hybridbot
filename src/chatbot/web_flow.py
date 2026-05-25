@@ -1,6 +1,6 @@
 from chainlit.element import Task, TaskList, TaskStatus
 
-from chatbot.flow_ui import apply_llm_flow, push_task_list
+from chatbot.flow_ui import apply_llm_flow, push_task_list, safe_title
 
 
 class WebFlowUI:
@@ -26,7 +26,7 @@ class WebFlowUI:
         elif kind == "source":
             idx = data["index"]
             total = data["total"]
-            title = (data.get("title") or "Sans titre").replace("\n", " ")
+            title = safe_title(data.get("title"), default="Sans titre")
             url = data.get("url") or ""
             self._exa.status = TaskStatus.DONE
             self.task_list.status = f"Sources ({idx}/{total})"

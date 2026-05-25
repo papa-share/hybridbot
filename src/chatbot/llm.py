@@ -306,7 +306,7 @@ async def process_llm_request(
             or text == "Format non supporté"
         ]
         if failures:
-            await emit_flow(flow_callback, "error")
+            await emit_flow(flow_callback, "error", message=failures[0])
             return _fail("\n".join(failures))
 
         content += "\n\nFichiers joints :\n"

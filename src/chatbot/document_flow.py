@@ -1,6 +1,6 @@
 from chainlit.element import Task, TaskList, TaskStatus
 
-from chatbot.flow_ui import apply_llm_flow, push_task_list
+from chatbot.flow_ui import apply_llm_flow, push_task_list, safe_title
 
 
 class DocumentFlowUI:
@@ -16,7 +16,7 @@ class DocumentFlowUI:
 
     async def handle(self, kind: str, data: dict) -> None:
         if kind == "extract_start":
-            self._file.title = (data.get("name") or "PDF").replace("\n", " ")
+            self._file.title = safe_title(data.get("name"), default="PDF")
             self._file.status = TaskStatus.RUNNING
             self._extract.status = TaskStatus.READY
             self.task_list.status = "PDF détecté"

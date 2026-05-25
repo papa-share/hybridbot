@@ -80,7 +80,6 @@ def test_session_params(mock_app_chainlit):
 
     params = _session_params()
 
-    assert params["ollama_model_id"] == "nemotron-3-super:cloud"
     assert params["ui_model_label"] == "[cloud] nemotron-3-super:cloud"
     assert params["temperature"] == 0.7
     assert params["top_p"] == 0.8
