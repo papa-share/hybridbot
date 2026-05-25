@@ -269,4 +269,4 @@ Avec `DATABASE_URL`, l'application enregistre `PostgresDataLayer` (`src/chatbot/
 
 ## Licence
 
-MIT. Voir [LICENSE](LICENSE).
+Apache-2.0. Voir [LICENSE](LICENSE).

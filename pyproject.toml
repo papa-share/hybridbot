@@ -7,7 +7,7 @@ name = "ollama-hybrid-bot"
 version = "1.0.0"
 description = "Chatbot Chainlit + Ollama"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [{name = "Papa Bounama NDIAYE"}]
 
