@@ -24,5 +24,6 @@ def test_extract_pdf_content(monkeypatch, tmp_path):
         lambda _path, _out: "# Rapport\n\nContenu extrait du PDF.",
     )
 
-    text = asyncio.run(extract_pdf_content(str(pdf), "doc.pdf", None))
-    assert "Contenu extrait" in text
+    result = asyncio.run(extract_pdf_content(str(pdf), "doc.pdf", None))
+    assert result.ok
+    assert "Contenu extrait" in result.text

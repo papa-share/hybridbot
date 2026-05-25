@@ -3,6 +3,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from chatbot.document_load import DocumentLoadResult
 from chatbot.flow_events import emit_flow
 
 try:
@@ -38,9 +39,9 @@ async def extract_pdf_content(
     path: str,
     name: str,
     flow_callback,
-) -> str:
+) -> DocumentLoadResult:
     if not PDF_LOADER_SUPPORT:
-        return "Erreur: opendataloader-pdf non installé."
+        return DocumentLoadResult(error="Erreur: opendataloader-pdf non installé.")
 
     label = name or os.path.basename(path)
     await emit_flow(flow_callback, "doc:extract_start", name=label)
@@ -51,12 +52,12 @@ async def extract_pdf_content(
             text = await asyncio.to_thread(_convert_pdf, path, tmp)
     except Exception as e:
         await emit_flow(flow_callback, "doc:error", message="Échec extraction")
-        return f"Erreur extraction PDF: {e}"
+        return DocumentLoadResult(error=f"Erreur extraction PDF: {e}")
 
     text = text.strip()
     if not text:
         await emit_flow(flow_callback, "doc:error", message="Document vide")
-        return "PDF sans texte extractible (couche texte absente)."
+        return DocumentLoadResult(error="PDF sans texte extractible (couche texte absente).")
 
     await emit_flow(flow_callback, "doc:extract_done")
-    return text
+    return DocumentLoadResult(text=text)

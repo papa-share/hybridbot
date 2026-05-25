@@ -10,6 +10,7 @@ import ollama
 from ollama import AsyncClient
 
 from chatbot.config import config, is_pdf_source, is_text_document_source, logger
+from chatbot.document_load import DocumentLoadResult
 from chatbot.flow_events import emit_flow
 from chatbot.pdf_loader import extract_pdf_content
 from chatbot.validators import validate_image_path
@@ -78,14 +79,14 @@ def _client_ollama() -> AsyncClient:
     return _client
 
 
-async def _read_document(path: str, mime: str = "", name: str = "") -> str:
+async def _read_document(path: str, mime: str = "", name: str = "") -> DocumentLoadResult:
     try:
         if is_text_document_source(path=path, mime=mime, name=name):
             async with aiofiles.open(path, encoding="utf-8") as handle:
-                return await handle.read()
-        return "Format non supporté"
+                return DocumentLoadResult(text=await handle.read())
+        return DocumentLoadResult(error="Format non supporté")
     except Exception as e:
-        return f"Erreur lecture: {e}"
+        return DocumentLoadResult(error=f"Erreur lecture: {e}")
 
 
 async def _load_document_text(
@@ -93,7 +94,7 @@ async def _load_document_text(
     mime: str,
     name: str,
     flow_callback: Callable[[str, dict[str, Any]], Any] | None,
-) -> str:
+) -> DocumentLoadResult:
     if is_pdf_source(path=path, mime=mime, name=name):
         return await extract_pdf_content(path, name, flow_callback)
     return await _read_document(path, mime, name)
@@ -299,19 +300,17 @@ async def process_llm_request(
             *(_load_document_text(path, mime, name, flow_callback) for path, mime, name in specs)
         )
         failures = [
-            f"{name or os.path.basename(path)}: {text}"
-            for (path, _, name), text in zip(specs, parts, strict=True)
-            if text.startswith("Erreur")
-            or "sans contenu extractible" in text
-            or text == "Format non supporté"
+            f"{name or os.path.basename(path)}: {loaded.error}"
+            for (path, _, name), loaded in zip(specs, parts, strict=True)
+            if not loaded.ok
         ]
         if failures:
             await emit_flow(flow_callback, "error", message=failures[0])
             return _fail("\n".join(failures))
 
         content += "\n\nFichiers joints :\n"
-        for (path, _, name), text in zip(specs, parts, strict=True):
-            content += f"\n--- {name or os.path.basename(path)} ---\n{text}\n"
+        for (path, _, name), loaded in zip(specs, parts, strict=True):
+            content += f"\n--- {name or os.path.basename(path)} ---\n{loaded.text}\n"
 
     web_used = False
     web_sources: list[dict[str, str]] = []

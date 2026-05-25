@@ -5,6 +5,7 @@ import time
 import pytest
 
 from chatbot import llm
+from chatbot.document_load import DocumentLoadResult
 from chatbot.llm import (
     _classify_ollama_error,
     _skip_model,
@@ -113,7 +114,7 @@ def test_process_llm_request_empty_pdf(monkeypatch, temp_dir):
         handle.write(b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n")
 
     async def fake_load(path, mime, name, flow_callback):
-        return "Erreur extraction: échec test"
+        return DocumentLoadResult(error="Erreur extraction: échec test")
 
     monkeypatch.setattr("chatbot.llm._load_document_text", fake_load)
 
@@ -133,8 +134,9 @@ def test_process_llm_request_empty_pdf(monkeypatch, temp_dir):
 def test_read_document_text_file(sample_text_file):
     from chatbot.llm import _read_document as read_document
 
-    text = asyncio.run(read_document(sample_text_file, "text/plain", "sample.txt"))
-    assert "Contenu de test" in text
+    result = asyncio.run(read_document(sample_text_file, "text/plain", "sample.txt"))
+    assert result.ok
+    assert "Contenu de test" in result.text
 
 
 @pytest.fixture(autouse=True)
