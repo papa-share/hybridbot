@@ -9,6 +9,7 @@ from chatbot.persistence import (
     default_chat_prefs,
     prefs_from_settings,
     read_chat_prefs,
+    read_session_ui_model,
     thread_is_shared,
     write_chat_prefs,
 )
@@ -106,6 +107,26 @@ def test_read_chat_prefs_legacy_model_name(mock_chainlit, monkeypatch):
 
     assert prefs["model"] == "[local] granite4:latest"
     assert prefs["max_tokens"] == 2048
+    assert user_session.get(SESSION_UI_MODEL) == "[local] granite4:latest"
+    assert user_session.get(_LEGACY_SESSION_MODEL) is None
+
+
+def test_read_session_ui_model_prefers_current_key(mock_chainlit):
+    user_session, _ = mock_chainlit
+    user_session.set(SESSION_UI_MODEL, "[cloud] current")
+    user_session.set(_LEGACY_SESSION_MODEL, "[local] legacy")
+
+    assert read_session_ui_model("fallback") == "[cloud] current"
+    assert user_session.get(_LEGACY_SESSION_MODEL) == "[local] legacy"
+
+
+def test_read_session_ui_model_migrates_legacy(mock_chainlit):
+    user_session, _ = mock_chainlit
+    user_session.set(_LEGACY_SESSION_MODEL, "[local] granite4:latest")
+
+    assert read_session_ui_model("fallback") == "[local] granite4:latest"
+    assert user_session.get(SESSION_UI_MODEL) == "[local] granite4:latest"
+    assert user_session.get(_LEGACY_SESSION_MODEL) is None
 
 
 def test_prefs_from_settings(mock_chainlit):

@@ -140,9 +140,22 @@ def _overlay_prefs(prefs: dict[str, Any], mapping: dict[str, Any]) -> dict[str, 
     return merged
 
 
+def read_session_ui_model(fallback: str) -> str:
+    ui_model = cl.user_session.get(SESSION_UI_MODEL)
+    if ui_model:
+        return str(ui_model).strip()
+    legacy = cl.user_session.get(_LEGACY_SESSION_MODEL)
+    if legacy:
+        migrated = str(legacy).strip()
+        cl.user_session.set(SESSION_UI_MODEL, migrated)
+        cl.user_session.set(_LEGACY_SESSION_MODEL, None)
+        return migrated
+    return fallback
+
+
 def _session_pref_mapping() -> dict[str, Any]:
     mapping = dict(_session_chat_settings())
-    ui_model = cl.user_session.get(SESSION_UI_MODEL) or cl.user_session.get(_LEGACY_SESSION_MODEL)
+    ui_model = read_session_ui_model("")
     if ui_model:
         mapping["model"] = ui_model
     for key in PREF_FIELDS[1:]:

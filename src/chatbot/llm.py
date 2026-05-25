@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -21,6 +22,7 @@ from chatbot.web import (
 
 _client: AsyncClient | None = None
 _catalog: dict[str, list[str]] | None = None
+_catalog_fetched_at: float = 0.0
 
 _CATALOG_PREFIXES = (
     ("chat_local", "[local] "),
@@ -139,9 +141,22 @@ async def _capabilities(name: str) -> list[str]:
         return []
 
 
+def invalidate_catalog() -> None:
+    global _catalog, _catalog_fetched_at
+    _catalog = None
+    _catalog_fetched_at = 0.0
+
+
+def _catalog_is_stale() -> bool:
+    if _catalog is None:
+        return True
+    age = time.monotonic() - _catalog_fetched_at
+    return age >= float(config.OLLAMA_CATALOG_TTL)
+
+
 async def get_catalog(refresh: bool = False) -> dict[str, list[str]]:
-    global _catalog
-    if _catalog is not None and not refresh:
+    global _catalog, _catalog_fetched_at
+    if _catalog is not None and not refresh and not _catalog_is_stale():
         return _catalog
 
     chat_local: list[str] = []
@@ -186,6 +201,7 @@ async def get_catalog(refresh: bool = False) -> dict[str, list[str]]:
             "tools_local": [],
             "tools_cloud": [fallback] if _is_cloud(fallback) else [],
         }
+        _catalog_fetched_at = time.monotonic()
         return _catalog
 
     _catalog = {
@@ -196,6 +212,7 @@ async def get_catalog(refresh: bool = False) -> dict[str, list[str]]:
         "tools_local": sorted(tools_local),
         "tools_cloud": sorted(tools_cloud),
     }
+    _catalog_fetched_at = time.monotonic()
     return _catalog
 
 

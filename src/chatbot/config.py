@@ -77,6 +77,7 @@ class Config:
 
     OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
     OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    OLLAMA_CATALOG_TTL = int(os.getenv("OLLAMA_CATALOG_TTL", "300"))
 
     EXA_API_KEY = os.getenv("EXA_API_KEY", "")
 

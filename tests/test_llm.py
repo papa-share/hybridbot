@@ -1,11 +1,17 @@
 import asyncio
 import os
+import time
 
+import pytest
+
+from chatbot import llm
 from chatbot.llm import (
     _classify_ollama_error,
     _skip_model,
     _vision_pool,
     build_model_labels,
+    get_catalog,
+    invalidate_catalog,
     model_from_label,
     process_llm_request,
 )
@@ -129,3 +135,72 @@ def test_read_document_text_file(sample_text_file):
 
     text = asyncio.run(read_document(sample_text_file, "text/plain", "sample.txt"))
     assert "Contenu de test" in text
+
+
+@pytest.fixture(autouse=True)
+def reset_catalog():
+    invalidate_catalog()
+    yield
+    invalidate_catalog()
+
+
+def _sample_catalog() -> dict[str, list[str]]:
+    return {
+        "chat_local": ["granite4:latest"],
+        "chat_cloud": ["nemotron-3-super:cloud"],
+        "vision_local": [],
+        "vision_cloud": [],
+        "tools_local": [],
+        "tools_cloud": [],
+    }
+
+
+def test_invalidate_catalog_clears_cache(monkeypatch):
+    llm._catalog = _sample_catalog()
+    llm._catalog_fetched_at = 1.0
+
+    invalidate_catalog()
+
+    assert llm._catalog is None
+    assert llm._catalog_fetched_at == 0.0
+
+
+def test_get_catalog_uses_cache_within_ttl(monkeypatch):
+    llm._catalog = _sample_catalog()
+    llm._catalog_fetched_at = time.monotonic()
+    monkeypatch.setattr("chatbot.llm.config.OLLAMA_CATALOG_TTL", 300)
+
+    def fail_list():
+        raise AssertionError("ollama.list ne devrait pas être appelé")
+
+    monkeypatch.setattr("chatbot.llm.ollama.list", fail_list)
+
+    catalog = asyncio.run(get_catalog(refresh=False))
+
+    assert catalog == _sample_catalog()
+
+
+def test_get_catalog_refreshes_when_stale(monkeypatch):
+    llm._catalog = {
+        "chat_local": ["old:latest"],
+        "chat_cloud": [],
+        "vision_local": [],
+        "vision_cloud": [],
+        "tools_local": [],
+        "tools_cloud": [],
+    }
+    llm._catalog_fetched_at = time.monotonic() - 400
+    monkeypatch.setattr("chatbot.llm.config.OLLAMA_CATALOG_TTL", 300)
+
+    listed = type("Listed", (), {"models": [type("Model", (), {"model": "granite4:latest"})()]})()
+
+    monkeypatch.setattr("chatbot.llm.ollama.list", lambda: listed)
+
+    async def fake_caps(_name: str):
+        return ["completion"]
+
+    monkeypatch.setattr("chatbot.llm._capabilities", fake_caps)
+
+    catalog = asyncio.run(get_catalog(refresh=False))
+
+    assert catalog["chat_local"] == ["granite4:latest"]

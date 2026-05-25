@@ -20,15 +20,16 @@ from chatbot.flow import make_flow_handler
 from chatbot.llm import (
     build_model_labels,
     get_catalog,
+    invalidate_catalog,
     label_for_model,
     model_from_label,
     process_llm_request,
 )
 from chatbot.persistence import (
-    SESSION_UI_MODEL,
     persist_chat_prefs,
     prefs_from_settings,
     read_chat_prefs,
+    read_session_ui_model,
     thread_is_shared,
     write_chat_prefs,
 )
@@ -83,11 +84,7 @@ async def on_shared_thread_view(thread: dict, viewer: cl.User | None):
 
 
 def _session_params() -> dict[str, Any]:
-    ui_label = (
-        cl.user_session.get(SESSION_UI_MODEL)
-        or cl.user_session.get("model_name")
-        or config.DEFAULT_MODEL
-    )
+    ui_label = read_session_ui_model(config.DEFAULT_MODEL)
     return {
         "ollama_model_id": model_from_label(ui_label.strip()),
         "ui_model_label": ui_label,
@@ -200,13 +197,7 @@ def _interaction_from_thread(thread: dict) -> list[dict[str, Any]]:
     return interaction
 
 
-async def _reply(result: dict[str, Any], msg: cl.Message, params: dict) -> None:
-    if result.get("has_images") and not cl.user_session.get("vision_model_used"):
-        model_used = result.get("model_used", params["ollama_model_id"])
-        if model_used != params["ollama_model_id"] and not result.get("error"):
-            await cl.Message(content=f"Image analysée avec : {model_used}").send()
-            cl.user_session.set("vision_model_used", True)
-
+async def _reply(result: dict[str, Any], msg: cl.Message, _params: dict) -> None:
     if result.get("error"):
         content = (result.get("message") or {}).get("content") or ERROR_MSG
         await cl.Message(content=content).send()
@@ -220,13 +211,18 @@ async def _reply(result: dict[str, Any], msg: cl.Message, params: dict) -> None:
 @cl.on_chat_start
 async def start_chat():
     _init_interaction()
-    cl.user_session.set("vision_model_used", False)
     await _bootstrap_ui(refresh_models=True, use_user_store=True)
 
 
 @cl.on_settings_update
 async def on_settings_update(settings):
+    invalidate_catalog()
     prefs = prefs_from_settings(settings)
+    catalog = await get_catalog(refresh=True)
+    models = build_model_labels(catalog)
+    if models and prefs["model"] not in models:
+        default_label = label_for_model(catalog, config.DEFAULT_MODEL)
+        prefs["model"] = default_label if default_label in models else models[0]
     write_chat_prefs(prefs)
     await persist_chat_prefs(prefs)
 
@@ -234,8 +230,7 @@ async def on_settings_update(settings):
 @cl.on_chat_resume
 async def on_chat_resume(thread: dict):
     cl.user_session.set("interaction", _interaction_from_thread(thread))
-    cl.user_session.set("vision_model_used", False)
-    await _bootstrap_ui(refresh_models=False, use_user_store=False)
+    await _bootstrap_ui(refresh_models=True, use_user_store=False)
 
 
 @cl.on_message
