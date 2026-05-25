@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import chainlit as cl
@@ -59,7 +59,7 @@ SELECT COUNT(*) AS n FROM accounts WHERE role = 'admin' AND active = true
 
 
 def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _normalize_identifier(identifier: str) -> str:
